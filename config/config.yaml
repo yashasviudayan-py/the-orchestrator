@@ -27,19 +27,14 @@ redis:
   ttl: 3600  # Time to live in seconds (1 hour)
   key_prefix: "orchestrator:"
 
-# LLM Configuration
+# LLM Configuration (Ollama - 100% Local)
 llm:
-  primary:
-    provider: "anthropic"
-    model: "claude-sonnet-4.5"
-    temperature: 0.7
-    max_tokens: 4000
-
-  fallback:
-    provider: "ollama"
-    model: "llama3"
-    temperature: 0.7
-    max_tokens: 4000
+  provider: "ollama"
+  base_url: "http://localhost:11434"
+  model: "llama3.1:8b-instruct-q8_0"
+  embedding_model: "nomic-embed-text"
+  temperature: 0.7
+  max_tokens: 4000
 
 # Human-in-the-Loop Configuration (Phase 3)
 hitl:

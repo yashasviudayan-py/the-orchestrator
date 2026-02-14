@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "the-orchestrator"
 version = "0.1.0"
-description = "An autonomous project manager that orchestrates multiple AI agents"
+description = "A local-first autonomous project manager that orchestrates multiple AI agents using Ollama"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -29,9 +29,9 @@ dependencies = [
     "langchain>=0.3.0",
     "langchain-core>=0.3.0",
 
-    # LLM Providers
-    "langchain-anthropic>=0.2.0",  # Claude
-    "langchain-ollama>=0.1.0",      # Ollama
+    # LLM Provider (Local)
+    "langchain-ollama>=0.1.0",
+    "ollama>=0.6.0",
 
     # State Management
     "redis>=5.0.0",

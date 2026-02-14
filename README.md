@@ -1,6 +1,6 @@
 # The Orchestrator
 
-An autonomous project manager that orchestrates multiple AI agents to accomplish complex software development tasks.
+A **100% local** autonomous project manager that orchestrates multiple AI agents to accomplish complex software development tasks using Ollama.
 
 ## Overview
 
@@ -8,6 +8,8 @@ The Orchestrator is a meta-agent system that coordinates three specialized agent
 - **Research Agent** (Project 1): Finds best practices and implementation patterns
 - **Context Core** (Project 3): Manages memory and context with secret filtering
 - **PR-Agent** (Project 2): Writes code and creates pull requests
+
+**Privacy-first**: Every component runs locally. No cloud APIs. No data leaves your machine. $0 cost.
 
 ## The Build Plan: 4 Phases to Autonomy
 
@@ -19,7 +21,7 @@ The Orchestrator is a meta-agent system that coordinates three specialized agent
 ### Phase 2: The Router
 **Focus**: Building a "Supervisor" node that decides which agent to call next.
 
-**Tech Stack**: Claude Pro, Ollama
+**Tech Stack**: Ollama (Local LLM)
 
 ### Phase 3: The HITL Gate
 **Focus**: Implementing "Human-in-the-Loop" for safety checks before code execution.
@@ -62,6 +64,30 @@ the-orchestrator/
 ├── config/                 # Configuration files
 ├── tests/                  # Test files
 └── docs/                   # Documentation
+```
+
+## Prerequisites
+
+- **Python 3.10+**
+- **[Ollama](https://ollama.com)** installed and running
+- **Redis** (local instance)
+
+```bash
+# Install Ollama (macOS)
+brew install ollama
+
+# Pull required models
+ollama pull llama3.1:8b-instruct-q8_0  # Main LLM
+ollama pull nomic-embed-text           # Embeddings
+
+# Start Ollama server
+ollama serve
+
+# Install Redis (macOS)
+brew install redis
+
+# Start Redis server
+redis-server
 ```
 
 ## Getting Started

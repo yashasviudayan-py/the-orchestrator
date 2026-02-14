@@ -3,9 +3,9 @@ langgraph>=0.2.0
 langchain>=0.3.0
 langchain-core>=0.3.0
 
-# LLM Providers
-langchain-anthropic>=0.2.0
+# LLM Provider (Local)
 langchain-ollama>=0.1.0
+ollama>=0.6.0
 
 # State Management
 redis>=5.0.0

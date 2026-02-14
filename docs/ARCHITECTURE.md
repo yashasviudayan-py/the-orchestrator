@@ -26,7 +26,7 @@ The shared state system that enables communication between agents.
 ### 2. The Router (Phase 2)
 The supervisor node that orchestrates agent execution.
 
-**Technology**: LangGraph Supervisor Pattern + Claude/Ollama
+**Technology**: LangGraph Supervisor Pattern + Ollama (Local LLM)
 
 **Purpose**:
 - Analyze user objectives
@@ -180,7 +180,7 @@ HITL gate intercepts risky operations for user approval.
 ## Error Handling
 
 ### Graceful Degradation
-- If Claude API fails → fallback to Ollama
+- If Ollama server is unreachable → retry with exponential backoff, then fail gracefully
 - If Redis fails → use in-memory state (warning logged)
 - If agent fails → log error, continue with partial results
 

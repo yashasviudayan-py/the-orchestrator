@@ -32,12 +32,18 @@ The project is built in 4 phases:
 - Test both success and failure paths
 
 ### Dependencies
-- **Primary LLM**: Claude (Anthropic)
-- **Fallback LLM**: Ollama (local)
+- **LLM**: Ollama (100% local, no API keys required)
 - **State Management**: Redis (local)
 - **Framework**: LangGraph
 - **API**: FastAPI (Phase 3)
 - **CLI**: Click + Rich (Phase 4)
+
+### LLM Configuration
+This project uses **Ollama exclusively** for all LLM operations:
+- **Routing decisions**: Ollama determines which agent to call next
+- **Agent operations**: All three existing agents use Ollama
+- **No cloud APIs**: Everything runs locally, $0 cost
+- **Privacy-first**: No data leaves your machine
 
 ## Project Structure
 ```
@@ -77,10 +83,10 @@ class TaskState(TypedDict):
 ```
 
 ### Error Handling
-- Use graceful degradation (fallback to Ollama if Claude fails)
-- Implement retry logic with exponential backoff
+- Implement retry logic with exponential backoff for Ollama connection failures
 - Log all errors with context
 - Never fail silently
+- Handle Ollama server downtime gracefully
 
 ## External Agent Integration
 This project integrates with three external agent projects:
@@ -91,10 +97,20 @@ This project integrates with three external agent projects:
 Paths to these projects are configured in `.env` file.
 
 ## Environment Setup
-1. Copy `.env.example` to `.env`
-2. Fill in API keys and agent paths
-3. Start Redis: `redis-server`
-4. Install dependencies: `pip install -r requirements.txt`
+1. **Start required services**:
+   ```bash
+   ollama serve        # Start Ollama server
+   redis-server        # Start Redis server
+   ```
+2. **Configure environment**:
+   ```bash
+   cp .env.example .env
+   # Update agent paths in .env if needed
+   ```
+3. **Install dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
 ## Testing
 ```bash
