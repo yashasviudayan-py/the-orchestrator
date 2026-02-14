@@ -1,0 +1,64 @@
+# The Orchestrator Configuration
+
+# Agent Configuration
+agents:
+  research:
+    name: "Research Agent"
+    description: "Finds best practices and implementation patterns"
+    enabled: true
+
+  context:
+    name: "Context Core"
+    description: "Manages memory and context with secret filtering"
+    enabled: true
+
+  pr:
+    name: "PR-Agent"
+    description: "Writes code and creates pull requests"
+    enabled: true
+
+# LangGraph Configuration
+langgraph:
+  max_iterations: 10
+  checkpoint_enabled: true
+
+# Redis State Configuration
+redis:
+  ttl: 3600  # Time to live in seconds (1 hour)
+  key_prefix: "orchestrator:"
+
+# LLM Configuration
+llm:
+  primary:
+    provider: "anthropic"
+    model: "claude-sonnet-4.5"
+    temperature: 0.7
+    max_tokens: 4000
+
+  fallback:
+    provider: "ollama"
+    model: "llama3"
+    temperature: 0.7
+    max_tokens: 4000
+
+# Human-in-the-Loop Configuration (Phase 3)
+hitl:
+  enabled: true
+  require_approval_for:
+    - "code_execution"
+    - "git_push"
+    - "api_calls"
+    - "file_deletion"
+  timeout: 300  # seconds
+
+# CLI Configuration (Phase 4)
+cli:
+  verbose: false
+  color: true
+  confirm_destructive: true
+
+# Logging
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/orchestrator.log"
