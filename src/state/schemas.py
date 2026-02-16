@@ -28,6 +28,7 @@ class AgentType(str, Enum):
     RESEARCH = "research"
     CONTEXT = "context"
     PR = "pr"
+    SUPERVISOR = "supervisor"  # Phase 2: Routing decisions
 
 
 class MessageType(str, Enum):

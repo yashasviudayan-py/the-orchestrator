@@ -10,7 +10,7 @@ from typing import Optional
 from langgraph.graph import StateGraph, END
 from langchain_ollama import ChatOllama
 
-from ..state.schemas import TaskState, TaskStatus
+from ..state.schemas import TaskState, TaskStatus, AgentType, MessageType
 from ..agents import (
     ResearchAgentInterface,
     ContextCoreInterface,
@@ -179,8 +179,8 @@ class EnhancedOrchestratorGraph:
 
             # Add decision to messages
             task_state.add_message(
-                agent_type="supervisor",
-                message_type="info",
+                agent_type=AgentType.SUPERVISOR,
+                message_type=MessageType.INFO,
                 content={
                     "decision": "initial_route",
                     "next_agent": decision.next_agent.value if decision.next_agent else None,
@@ -285,8 +285,8 @@ class EnhancedOrchestratorGraph:
 
             # Add decision to messages
             task_state.add_message(
-                agent_type="supervisor",
-                message_type="info",
+                agent_type=AgentType.SUPERVISOR,
+                message_type=MessageType.INFO,
                 content={
                     "decision": "next_route",
                     "next_agent": decision.next_agent.value if decision.next_agent else None,
