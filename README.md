@@ -2,6 +2,11 @@
 
 A **100% local** autonomous project manager that orchestrates multiple AI agents to accomplish complex software development tasks using Ollama.
 
+![Status](https://img.shields.io/badge/Phase_1-Complete-brightgreen)
+![Status](https://img.shields.io/badge/Phase_2-Complete-brightgreen)
+![Status](https://img.shields.io/badge/Phase_3-Planned-yellow)
+![Status](https://img.shields.io/badge/Phase_4-Planned-yellow)
+
 ## Overview
 
 The Orchestrator is a meta-agent system that coordinates three specialized agents:
@@ -11,27 +16,76 @@ The Orchestrator is a meta-agent system that coordinates three specialized agent
 
 **Privacy-first**: Every component runs locally. No cloud APIs. No data leaves your machine. $0 cost.
 
+## Current Status
+
+✅ **Phase 1 Complete** - The Blackboard (State Management)
+✅ **Phase 2 Complete** - The Router (Intelligent Routing)
+⏳ **Phase 3 Planned** - The HITL Gate (Human-in-the-Loop)
+⏳ **Phase 4 Planned** - The Commander CLI (Terminal Interface)
+
 ## The Build Plan: 4 Phases to Autonomy
 
-### Phase 1: The Blackboard
-**Focus**: Creating a shared "State" where all three agents can read/write data.
+### ✅ Phase 1: The Blackboard (COMPLETE)
+**Focus**: Shared state management for multi-agent coordination
 
-**Tech Stack**: LangGraph, Redis (Local)
+**Tech Stack**: LangGraph, Redis (Local), Pydantic
 
-### Phase 2: The Router
-**Focus**: Building a "Supervisor" node that decides which agent to call next.
+**Features Implemented**:
+- ✓ Redis-based state persistence with connection pooling
+- ✓ Pydantic schemas for type-safe state management
+- ✓ CRUD operations for tasks and messages
+- ✓ Agent interface wrappers (Research, Context Core, PR-Agent)
+- ✓ LangGraph orchestrator with nodes and edges
+- ✓ **Secret filtering** integration (critical security)
+- ✓ **Max iterations safeguard** (prevents infinite loops)
+- ✓ Error handling and logging
+- ✓ Complete documentation and tests
 
-**Tech Stack**: Ollama (Local LLM)
+📚 [View Phase 1 Documentation](docs/PHASE_1_USAGE.md)
 
-### Phase 3: The HITL Gate
-**Focus**: Implementing "Human-in-the-Loop" for safety checks before code execution.
+### ✅ Phase 2: The Router (COMPLETE)
+**Focus**: Intelligent agent routing with context management
+
+**Tech Stack**: Ollama (Local LLM), LangGraph
+
+**Features Implemented**:
+- ✓ **Context Summarizer** - prevents context window overflow
+- ✓ **Enhanced Supervisor** - intelligent routing decisions
+- ✓ **3 Routing Strategies**:
+  - Research-First (for new features)
+  - Context-First (for refactoring)
+  - Adaptive (LLM-powered, recommended)
+- ✓ Decision history tracking with reasoning
+- ✓ Confidence scoring for decisions
+- ✓ Agent-optimized context creation
+- ✓ Token estimation and management
+- ✓ Smart retry logic
+
+📚 [View Phase 2 Documentation](docs/PHASE_2_GUIDE.md)
+
+### ⏳ Phase 3: The HITL Gate (PLANNED)
+**Focus**: Human-in-the-Loop safety checks before risky operations
 
 **Tech Stack**: FastAPI, Inquirer.py
 
-### Phase 4: The Commander CLI
-**Focus**: A unified terminal interface to manage your entire local AI ecosystem.
+**Planned Features**:
+- Approval required for code execution, git push, API calls
+- FastAPI approval endpoint
+- Terminal UI for approvals
+- Timeout handling
+- Approval history
 
-**Tech Stack**: Click (Python)
+### ⏳ Phase 4: The Commander CLI (PLANNED)
+**Focus**: Unified terminal interface for the entire system
+
+**Tech Stack**: Click (Python), Rich
+
+**Planned Features**:
+- Interactive CLI for task management
+- Progress tracking with Rich UI
+- Configuration management
+- Log viewing
+- Agent health monitoring
 
 ## The Workflow: How It Works
 
@@ -92,8 +146,222 @@ redis-server
 
 ## Getting Started
 
-Coming soon after Phase 1 implementation.
+### Installation
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/yashasviudayan-py/the-orchestrator.git
+cd the-orchestrator
+
+# 2. Install dependencies
+pip install -r requirements.txt
+
+# 3. Install Context Core (required for secret filtering)
+pip install -e "/Users/yashasviudayan/Context Core"
+
+# 4. Configure environment
+cp .env.example .env
+# Edit .env with your agent paths
+
+# 5. Start required services
+redis-server &
+ollama serve &
+```
+
+### Quick Start (Phase 2)
+
+```python
+import asyncio
+from dotenv import load_dotenv
+
+from state.redis_client import get_redis_client
+from agents import (
+    ResearchAgentInterface,
+    ContextCoreInterface,
+    PRAgentInterface,
+)
+from orchestrator import EnhancedOrchestratorGraph, RoutingStrategy
+from config import get_cached_settings
+
+async def main():
+    load_dotenv()
+    settings = get_cached_settings()
+
+    # Initialize Redis
+    redis_client = get_redis_client(
+        host=settings.redis_host,
+        port=settings.redis_port,
+    )
+    await redis_client.connect()
+
+    # Initialize Agents
+    research_agent = ResearchAgentInterface(settings.research_agent_url)
+    context_agent = ContextCoreInterface(settings.context_core_path)
+    pr_agent = PRAgentInterface(settings.pr_agent_path)
+
+    # Initialize Phase 2 Orchestrator
+    orchestrator = EnhancedOrchestratorGraph(
+        research_agent=research_agent,
+        context_agent=context_agent,
+        pr_agent=pr_agent,
+        routing_strategy=RoutingStrategy.ADAPTIVE,  # Let LLM decide
+    )
+
+    # Run orchestration
+    result = await orchestrator.run(
+        objective="Add dark mode toggle to React app",
+        user_context={"repo_path": "/path/to/repo"},
+    )
+
+    print(f"Status: {result.status}")
+    print(f"Output:\n{result.final_output}")
+
+    # View routing decisions
+    stats = orchestrator.get_supervisor_stats()
+    print(f"\nDecisions made: {stats['total_decisions']}")
+    print(f"Average confidence: {stats['avg_confidence']:.2f}")
+
+    await redis_client.disconnect()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Run Demos
+
+```bash
+# Phase 1 Demo - State Management
+python examples/phase1_demo.py
+
+# Phase 2 Demo - Intelligent Routing
+python examples/phase2_demo.py
+```
+
+### Run Tests
+
+```bash
+# Run all tests
+pytest tests/ -v
+
+# Run with coverage
+pytest tests/ --cov=src --cov-report=html
+```
+
+## Features
+
+### 🔒 Security
+- **Secret Filtering**: Integrates Context Core's SecretDetector (15+ pattern types)
+- **Safe Operations**: Max iterations safeguard prevents infinite loops
+- **Input Validation**: Pydantic schemas validate all data
+- **Error Boundaries**: Comprehensive error handling
+
+### 🧠 Intelligent Routing
+- **Adaptive Strategy**: LLM analyzes objective and chooses best approach
+- **Research-First**: For new features and unfamiliar tech
+- **Context-First**: For refactoring and similar past work
+- **Decision History**: Track all routing decisions with reasoning
+
+### 📦 Context Management
+- **Automatic Summarization**: Prevents context window overflow
+- **Token Estimation**: Monitors and manages token usage
+- **Agent-Optimized**: Tailors context for each agent
+- **Compression**: Intelligent compression using Ollama
+
+### 🔄 State Management
+- **Redis Persistence**: Durable task state with TTL
+- **Message History**: Complete audit trail
+- **CRUD Operations**: Create, read, update, delete tasks
+- **Statistics**: Task analytics and monitoring
+
+### 🔌 Agent Integration
+- **Research Agent**: HTTP API integration
+- **Context Core**: Direct Python import
+- **PR-Agent**: Subprocess execution
+- **Health Checks**: Monitor agent availability
+
+## Documentation
+
+- **[Phase 1 Usage Guide](docs/PHASE_1_USAGE.md)** - Complete Phase 1 documentation
+- **[Phase 2 Guide](docs/PHASE_2_GUIDE.md)** - Intelligent routing and context management
+- **[Architecture](docs/ARCHITECTURE.md)** - System architecture and design
+- **[Agent Integration](docs/EXISTING_AGENTS.md)** - How agents are integrated
+
+## Project Structure
+
+```
+the-orchestrator/
+├── src/
+│   ├── orchestrator/           # Main orchestrator logic
+│   │   ├── graph.py           # Phase 1 basic graph
+│   │   ├── graph_v2.py        # Phase 2 enhanced graph
+│   │   ├── supervisor.py      # Intelligent routing
+│   │   ├── summarizer.py      # Context management
+│   │   ├── nodes.py           # Node implementations
+│   │   └── edges.py           # Edge routing logic
+│   ├── agents/                # Agent interfaces
+│   │   ├── research.py        # Research Agent wrapper
+│   │   ├── context.py         # Context Core wrapper
+│   │   └── pr_agent.py        # PR-Agent wrapper
+│   ├── state/                 # State management
+│   │   ├── redis_client.py    # Redis connection
+│   │   ├── manager.py         # State CRUD
+│   │   └── schemas.py         # Pydantic models
+│   ├── cli/                   # CLI (Phase 4)
+│   ├── api/                   # FastAPI (Phase 3)
+│   ├── config.py              # Configuration
+│   └── logging_config.py      # Logging setup
+├── config/                    # Configuration files
+├── docs/                      # Documentation
+├── examples/                  # Demo scripts
+├── tests/                     # Test files
+└── logs/                      # Log files
+```
+
+## Routing Strategies
+
+### Adaptive (Recommended)
+Let Ollama analyze the objective and choose the best approach automatically.
+
+**Example**:
+- "Fix typo" → Direct to PR
+- "Add OAuth2" → Research first
+- "Update login" → Check context first
+
+### Research-First
+Always start with research - best for new features and unfamiliar technologies.
+
+### Context-First
+Check existing codebase first - best for refactoring and similar past work.
+
+## Performance
+
+- **100% Local**: No API calls, no latency, no costs
+- **Efficient**: Context summarization keeps token usage low
+- **Fast**: Connection pooling and caching
+- **Scalable**: Redis for distributed state (future)
+
+## Contributing
+
+Contributions welcome! This project is under active development.
+
+## Roadmap
+
+- [x] Phase 1: State Management (Redis + LangGraph)
+- [x] Phase 2: Intelligent Routing (Supervisor + Summarizer)
+- [ ] Phase 3: HITL Gate (FastAPI + Approval UI)
+- [ ] Phase 4: Commander CLI (Click + Rich)
+- [ ] Future: Distributed orchestration, parallel agents
+
+## Support
+
+- 📖 [Documentation](docs/)
+- 💬 [Issues](https://github.com/yashasviudayan-py/the-orchestrator/issues)
+- 🎯 [Demos](examples/)
 
 ## License
 
 MIT
+
+---
+
+**Built with ❤️ using 100% local AI** | No cloud, no costs, full privacy
