@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - The Orchestrator</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="container navbar-content">
+            <a href="/" class="navbar-brand">The Orchestrator</a>
+            <ul class="navbar-nav">
+                <li><a href="/" class="nav-link active">Dashboard</a></li>
+                <li><a href="/approvals" class="nav-link">Approvals</a></li>
+                <li><a href="/history" class="nav-link">History</a></li>
+                <li><a href="/analytics" class="nav-link">Analytics</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main">
+        <div class="container">
+            <!-- Page Header -->
+            <h1 class="section-title">Command Center</h1>
+            <p class="section-subtitle">Orchestrate multiple AI agents to accomplish complex software development tasks</p>
+
+            <!-- Agent Status Grid -->
+            <div class="agent-grid" id="agent-grid">
+                <div class="agent-status" data-agent="research">
+                    <div class="agent-name">Research</div>
+                    <div class="agent-indicator unknown"></div>
+                    <div class="agent-label text-dim">Agent</div>
+                </div>
+                <div class="agent-status" data-agent="context">
+                    <div class="agent-name">Context</div>
+                    <div class="agent-indicator unknown"></div>
+                    <div class="agent-label text-dim">Core</div>
+                </div>
+                <div class="agent-status" data-agent="pr">
+                    <div class="agent-name">PR-Agent</div>
+                    <div class="agent-indicator unknown"></div>
+                    <div class="agent-label text-dim">Code</div>
+                </div>
+                <div class="agent-status" data-agent="ollama">
+                    <div class="agent-name">Ollama</div>
+                    <div class="agent-indicator unknown"></div>
+                    <div class="agent-label text-dim">LLM</div>
+                </div>
+                <div class="agent-status" data-agent="redis">
+                    <div class="agent-name">Redis</div>
+                    <div class="agent-indicator unknown"></div>
+                    <div class="agent-label text-dim">State</div>
+                </div>
+            </div>
+
+            <!-- Task Input -->
+            <div class="task-input-container">
+                <div class="card">
+                    <h2 class="card-title">Start New Task</h2>
+                    <textarea
+                        id="task-input"
+                        class="task-input"
+                        placeholder="What would you like to accomplish?&#10;&#10;Example: Add OAuth2 authentication to my React app using best practices"
+                        rows="4"
+                    ></textarea>
+                    <div class="task-options">
+                        <button id="submit-btn" class="btn btn-primary">
+                            Start Task
+                        </button>
+                        <span class="text-dim" style="line-height: 32px;">
+                            Press Enter to submit • Shift+Enter for new line
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Task Progress (Hidden until task starts) -->
+            <div id="task-progress" class="hidden">
+                <div class="card task-progress">
+                    <div class="task-header">
+                        <h2 class="task-title">Task Progress</h2>
+                        <span id="task-status" class="task-status running">Running</span>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    <div class="progress-bar">
+                        <div id="progress-bar" class="progress-fill" style="width: 0%;"></div>
+                    </div>
+
+                    <!-- Task Metadata -->
+                    <div class="task-details">
+                        <div class="task-meta">
+                            <div class="task-meta-item">
+                                <span class="task-meta-label">Current Agent:</span>
+                                <span id="current-agent" class="text-primary">-</span>
+                            </div>
+                            <div class="task-meta-item">
+                                <span class="task-meta-label">Iteration:</span>
+                                <span id="iteration" class="text-primary">0 / 10</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Events Timeline -->
+                    <div class="events-timeline" id="events-timeline">
+                        <!-- Events will be added here dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Tasks -->
+            <div class="card mt-3">
+                <div class="card-title">Recent Tasks</div>
+                <div class="card-content">
+                    <p class="text-dim">No recent tasks. Start your first task above!</p>
+                    <p class="text-dim mt-2">
+                        <a href="/history" class="text-primary" style="text-decoration: none;">View all tasks →</a>
+                    </p>
+                </div>
+            </div>
+
+            <!-- Quick Tips -->
+            <div class="card mt-3">
+                <div class="card-title">Quick Tips</div>
+                <div class="card-content">
+                    <ul style="list-style: none; padding: 0; color: var(--text-secondary);">
+                        <li style="margin-bottom: 8px;">💡 The orchestrator will automatically route your task to the appropriate agents</li>
+                        <li style="margin-bottom: 8px;">🔒 Risky operations (like git push, code execution) will require your approval</li>
+                        <li style="margin-bottom: 8px;">📊 Check the <a href="/analytics" style="color: var(--text-primary); text-decoration: none;">Analytics</a> page for insights on agent performance</li>
+                        <li style="margin-bottom: 8px;">⚡ Real-time progress updates will appear automatically</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer style="padding: 32px 0; text-align: center; color: var(--text-dim); font-size: 13px;">
+        <div class="container">
+            The Orchestrator • 100% Local • No Cloud APIs • Full Privacy
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - The Orchestrator</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container navbar-content">
+            <a href="/" class="navbar-brand">The Orchestrator</a>
+            <ul class="navbar-nav">
+                <li><a href="/" class="nav-link">Dashboard</a></li>
+                <li><a href="/approvals" class="nav-link active">Approvals</a></li>
+                <li><a href="/history" class="nav-link">History</a></li>
+                <li><a href="/analytics" class="nav-link">Analytics</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <main class="main">
+        <div class="container">
+            <h1 class="section-title">Approvals</h1>
+            <p class="section-subtitle">Review and approve risky operations before execution</p>
+
+            <!-- Statistics -->
+            <div class="card mb-3">
+                <div class="card-title">Pending Approvals (<span id="pending-count">0</span>)</div>
+                <div id="empty-pending" class="card-content">
+                    <p class="text-dim">✓ No pending approval requests.</p>
+                    <p class="text-dim mt-2">Approval requests will appear here when the orchestrator needs permission for risky operations.</p>
+                </div>
+                <div id="pending-list">
+                    <!-- Approval cards will be rendered here -->
+                </div>
+            </div>
+
+            <!-- Approval History -->
+            <div class="card">
+                <div class="card-title">Recent Approvals</div>
+                <div id="empty-history" class="card-content">
+                    <p class="text-dim">No approval history yet.</p>
+                    <p class="text-dim mt-2">Completed approval decisions will appear here.</p>
+                </div>
+                <div id="history-list">
+                    <!-- History items will be rendered here -->
+                </div>
+            </div>
+
+            <!-- Info Card -->
+            <div class="card mt-3">
+                <div class="card-title">About Approvals</div>
+                <div class="card-content">
+                    <ul style="list-style: none; padding: 0; color: var(--text-secondary);">
+                        <li style="margin-bottom: 8px;">🟢 <strong>Low Risk</strong> - Auto-approved (agent calls, reads)</li>
+                        <li style="margin-bottom: 8px;">🟡 <strong>Medium Risk</strong> - Approval recommended (writes, commits)</li>
+                        <li style="margin-bottom: 8px;">🟠 <strong>High Risk</strong> - Approval required (git push, code execution)</li>
+                        <li style="margin-bottom: 8px;">🔴 <strong>Critical Risk</strong> - Always requires approval (force push, deletions)</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer style="padding: 32px 0; text-align: center; color: var(--text-dim); font-size: 13px;">
+        <div class="container">
+            The Orchestrator • 100% Local • No Cloud APIs • Full Privacy
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="/static/js/approvals.js"></script>
+</body>
+</html>

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - The Orchestrator</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container navbar-content">
+            <a href="/" class="navbar-brand">The Orchestrator</a>
+            <ul class="navbar-nav">
+                <li><a href="/" class="nav-link">Dashboard</a></li>
+                <li><a href="/approvals" class="nav-link">Approvals</a></li>
+                <li><a href="/history" class="nav-link active">History</a></li>
+                <li><a href="/analytics" class="nav-link">Analytics</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <main class="main">
+        <div class="container">
+            <h1 class="section-title">Task History</h1>
+            <p class="section-subtitle">View all completed orchestration tasks</p>
+
+            <div class="card">
+                <div class="card-title">Recent Tasks</div>
+                <div class="card-content">
+                    <p class="text-dim">No task history yet.</p>
+                    <p class="text-dim mt-2">Completed tasks will appear here with full execution details.</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer style="padding: 32px 0; text-align: center; color: var(--text-dim); font-size: 13px;">
+        <div class="container">
+            The Orchestrator • 100% Local • No Cloud APIs • Full Privacy
+        </div>
+    </footer>
+</body>
+</html>
