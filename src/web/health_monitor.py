@@ -63,7 +63,7 @@ class HealthMonitor:
     async def check_research_agent(self) -> AgentStatus:
         """Check if Research Agent API is accessible."""
         try:
-            url = f"{self.settings.research_agent_url}/health"
+            url = f"{self.settings.research_agent_url}/api/health"
             timeout = aiohttp.ClientTimeout(total=3)
 
             async with aiohttp.ClientSession(timeout=timeout) as session:

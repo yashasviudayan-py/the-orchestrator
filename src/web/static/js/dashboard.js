@@ -25,6 +25,7 @@ const state = {
 const elements = {
     taskInput: document.getElementById('task-input'),
     submitBtn: document.getElementById('submit-btn'),
+    stopBtn: document.getElementById('stop-btn'),
     taskProgress: document.getElementById('task-progress'),
     taskStatus: document.getElementById('task-status'),
     progressBar: document.getElementById('progress-bar'),
@@ -76,6 +77,21 @@ const api = {
     },
 
     /**
+     * Cancel a running task
+     */
+    async cancelTask(taskId) {
+        const response = await fetch(`/api/tasks/${taskId}`, {
+            method: 'DELETE',
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to cancel task');
+        }
+
+        return await response.json();
+    },
+
+    /**
      * Check agent health
      */
     async checkHealth() {
@@ -107,8 +123,9 @@ function connectToTaskStream(taskId, streamUrl) {
         console.log('Task started:', data);
         addEvent('Task started', 'system');
 
-        // Update button to show working state
+        // Update button to show working state and show stop button
         elements.submitBtn.innerHTML = '<span class="spinner"></span> Working...';
+        elements.stopBtn.classList.remove('hidden');
     });
 
     // Agent start
@@ -192,9 +209,10 @@ function connectToTaskStream(taskId, streamUrl) {
             showFinalOutput(data.final_output);
         }
 
-        // Reset button
+        // Reset buttons
         elements.submitBtn.disabled = false;
         elements.submitBtn.textContent = 'Start Task';
+        elements.stopBtn.classList.add('hidden');
 
         eventSource.close();
         state.eventSource = null;
@@ -210,9 +228,10 @@ function connectToTaskStream(taskId, streamUrl) {
             addEvent(`✗ Error: ${data.error}`, 'system', 'error');
         }
 
-        // Reset button
+        // Reset buttons
         elements.submitBtn.disabled = false;
         elements.submitBtn.textContent = 'Start Task';
+        elements.stopBtn.classList.add('hidden');
 
         eventSource.close();
         state.eventSource = null;
@@ -231,9 +250,10 @@ function connectToTaskStream(taskId, streamUrl) {
         if (eventSource.readyState === EventSource.CLOSED) {
             addEvent('Connection closed', 'system', 'error');
 
-            // Reset button on connection failure
+            // Reset buttons on connection failure
             elements.submitBtn.disabled = false;
             elements.submitBtn.textContent = 'Start Task';
+            elements.stopBtn.classList.add('hidden');
         }
     };
 }
@@ -385,6 +405,42 @@ elements.submitBtn.addEventListener('click', async () => {
 
         elements.submitBtn.disabled = false;
         elements.submitBtn.textContent = 'Start Task';
+    }
+});
+
+/**
+ * Handle task stop/cancellation
+ */
+elements.stopBtn.addEventListener('click', async () => {
+    if (!state.currentTaskId) {
+        return;
+    }
+
+    const confirmed = confirm('Are you sure you want to stop this task?');
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        await api.cancelTask(state.currentTaskId);
+
+        addEvent('Task cancelled by user', 'system', 'warning');
+
+        // Close event source
+        if (state.eventSource) {
+            state.eventSource.close();
+            state.eventSource = null;
+        }
+
+        // Reset UI
+        updateTaskStatus('cancelled');
+        elements.submitBtn.disabled = false;
+        elements.submitBtn.textContent = 'Start Task';
+        elements.stopBtn.classList.add('hidden');
+
+    } catch (error) {
+        console.error('Failed to cancel task:', error);
+        alert(`Failed to cancel task: ${error.message}`);
     }
 });
 

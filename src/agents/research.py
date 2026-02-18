@@ -65,6 +65,20 @@ class ResearchAgentInterface(AgentInterface):
                     json={"topic": topic},
                 )
 
+                # Handle 409 (job already running) - try to get existing job
+                if response.status_code == 409:
+                    self.logger.warning("Research job already running - checking for latest job")
+                    result = await self._get_latest_job_result(client, topic)
+                    if result:
+                        self.logger.info("Retrieved results from existing job")
+                        self._log_execution(task_input, result)
+                        return result
+                    else:
+                        raise AgentError(
+                            self.name,
+                            "Research job already running and no completed results available",
+                        )
+
                 if response.status_code != 200:
                     raise AgentError(
                         self.name,
@@ -72,7 +86,7 @@ class ResearchAgentInterface(AgentInterface):
                     )
 
                 data = response.json()
-                job_id = data.get("id")
+                job_id = data.get("job_id")  # API returns "job_id", not "id"
 
                 if not job_id:
                     raise AgentError(self.name, "No job ID returned from research API")
@@ -99,6 +113,56 @@ class ResearchAgentInterface(AgentInterface):
             raise
         except Exception as e:
             raise AgentError(self.name, f"Unexpected error: {str(e)}", e)
+
+    async def _get_latest_job_result(
+        self,
+        client: httpx.AsyncClient,
+        topic: str,
+    ) -> dict[str, Any] | None:
+        """
+        Try to get results from the latest completed research job.
+
+        When a job is already running (409), we can either wait for it or
+        retrieve results from a recently completed job with the same topic.
+        """
+        try:
+            # Get list of all reports
+            response = await client.get(f"{self.base_url}/api/reports")
+
+            if response.status_code == 200:
+                reports = response.json()
+
+                # Find most recent report (reports should be sorted by timestamp)
+                if reports and len(reports) > 0:
+                    # Get the most recent report
+                    latest = reports[0]
+                    report_id = latest.get("id")
+
+                    if report_id:
+                        self.logger.info(f"Found latest completed report {report_id}")
+                        # Get the full report
+                        report_response = await client.get(
+                            f"{self.base_url}/api/reports/{report_id}"
+                        )
+
+                        if report_response.status_code == 200:
+                            data = report_response.json()
+                            return {
+                                "topic": data.get("topic", topic),
+                                "summary": self._extract_summary(data.get("content", "")),
+                                "urls": data.get("urls", []),
+                                "key_findings": self._extract_key_findings(
+                                    data.get("content", "")
+                                ),
+                                "report_path": f"reports/{report_id}.md",
+                                "elapsed_ms": data.get("elapsed_ms", 0.0),
+                            }
+
+            return None
+
+        except Exception as e:
+            self.logger.warning(f"Could not retrieve latest report: {e}")
+            return None
 
     async def _poll_for_completion(
         self,
