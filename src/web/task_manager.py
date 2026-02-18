@@ -119,12 +119,21 @@ class TaskManager:
         )
 
         # Start background execution
-        bg_task = asyncio.create_task(
+        bg_task = asyncio.ensure_future(
             self._run_orchestration(task_id, request)
         )
         self.background_tasks[task_id] = bg_task
 
-        logger.info(f"Started task {task_id}: {request.objective}")
+        # Add callback to log if task fails
+        def task_done_callback(future):
+            try:
+                future.result()
+            except Exception as e:
+                logger.error(f"Background task {task_id} raised exception: {e}", exc_info=True)
+
+        bg_task.add_done_callback(task_done_callback)
+
+        logger.info(f"Started background task {task_id}: {request.objective}")
 
         return task_state
 
@@ -140,7 +149,9 @@ class TaskManager:
             task_id: Task ID
             request: Task request
         """
+        logger.info(f"🚀 BACKGROUND TASK STARTED for {task_id}")
         try:
+            logger.info(f"Creating orchestrator for {task_id}")
             # Create orchestrator with HITL if enabled
             orchestrator = create_hitl_enabled_graph(
                 base_graph_class=EnhancedOrchestratorGraph,
@@ -159,11 +170,42 @@ class TaskManager:
             # Update status
             self._update_task_info(task_id, status=TaskStatus.RUNNING)
 
+            # Progress callback to emit events during execution
+            async def progress_callback(state_dict: dict):
+                """Called on each node update during orchestration."""
+                try:
+                    # Extract state info
+                    current_agent = state_dict.get("current_agent")
+                    iteration = state_dict.get("iteration", 0)
+                    status = state_dict.get("status")
+
+                    # Update task info
+                    self._update_task_info(
+                        task_id,
+                        current_agent=current_agent,
+                        iteration=iteration,
+                    )
+
+                    # Emit progress event
+                    await self._emit_event(
+                        task_id,
+                        ProgressEventType.AGENT_PROGRESS,
+                        {
+                            "task_id": task_id,
+                            "current_agent": current_agent,
+                            "iteration": iteration,
+                            "status": status,
+                        },
+                    )
+                except Exception as e:
+                    logger.warning(f"Progress callback error: {e}")
+
             result = await orchestrator.run(
                 objective=request.objective,
                 user_context=request.user_context,
                 max_iterations=request.max_iterations,
                 routing_strategy=request.routing_strategy,
+                progress_callback=progress_callback,
             )
 
             # Store result

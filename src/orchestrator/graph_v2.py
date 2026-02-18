@@ -60,11 +60,12 @@ class EnhancedOrchestratorGraph:
         self.pr_agent = pr_agent
         self.routing_strategy = routing_strategy
 
-        # Initialize LLM
+        # Initialize LLM with extended timeout
         self.llm = ChatOllama(
             base_url=llm_base_url,
             model=llm_model,
             temperature=0.7,
+            timeout=120.0,  # 2 minutes for Ollama requests
         )
 
         # Initialize Phase 2 components
@@ -377,15 +378,17 @@ class EnhancedOrchestratorGraph:
         user_context: Optional[dict] = None,
         max_iterations: int = 10,
         routing_strategy: Optional[RoutingStrategy] = None,
+        progress_callback: Optional[callable] = None,
     ) -> TaskState:
         """
-        Run the enhanced orchestrator.
+        Run the enhanced orchestrator with optional progress callbacks.
 
         Args:
             objective: Task objective
             user_context: Optional user context
             max_iterations: Maximum iterations
             routing_strategy: Optional strategy override
+            progress_callback: Optional async callback(state_dict) for progress updates
 
         Returns:
             Final TaskState
@@ -404,8 +407,23 @@ class EnhancedOrchestratorGraph:
                 max_iterations=max_iterations,
             )
 
-            # Run graph
-            final_state_dict = await self.graph.ainvoke(initial_state.model_dump())
+            # If callback provided, use streaming mode
+            if progress_callback:
+                final_state_dict = None
+                async for chunk in self.graph.astream(initial_state.model_dump()):
+                    # chunk is dict with node name as key
+                    for node_name, state_update in chunk.items():
+                        logger.info(f"📍 Node '{node_name}' updated state")
+                        # Call progress callback with current state
+                        await progress_callback(state_update)
+                        final_state_dict = state_update
+
+                if not final_state_dict:
+                    raise RuntimeError("Graph stream ended without producing state")
+            else:
+                # Non-streaming mode
+                final_state_dict = await self.graph.ainvoke(initial_state.model_dump())
+
             final_state = TaskState(**final_state_dict)
 
             logger.info(

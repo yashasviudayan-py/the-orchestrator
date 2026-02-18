@@ -5,6 +5,7 @@ The supervisor analyzes task state and decides optimal agent routing using
 sophisticated strategies and Ollama-powered decision making.
 """
 
+import asyncio
 import logging
 from enum import Enum
 from typing import Optional, List
@@ -273,7 +274,9 @@ Respond with ONLY: RESEARCH, CONTEXT, PR, or DONE
 Next:"""
 
         try:
+            logger.info("🧠 Calling Ollama LLM for routing decision...")
             response = await self.llm.ainvoke(prompt)
+            logger.info(f"✓ Ollama responded: {response.content[:100]}")
             decision = response.content.strip().upper()
 
             if decision == "DONE":
@@ -301,8 +304,20 @@ Next:"""
 
             return decision_obj
 
+        except asyncio.CancelledError:
+            logger.warning("⚠️  Routing decision cancelled (task stopped by user)")
+            raise  # Re-raise cancellation
+        except asyncio.TimeoutError as e:
+            logger.error(f"⏱️  Ollama request timed out: {e}")
+            return RoutingDecision(
+                next_agent=None,
+                strategy_used=self.default_strategy,
+                reasoning=f"Ollama timeout - cannot route",
+                confidence=0.0,
+                alternative_agents=[],
+            )
         except Exception as e:
-            logger.error(f"Next route decision failed: {e}")
+            logger.error(f"❌ Next route decision failed: {e}", exc_info=True)
             return RoutingDecision(
                 next_agent=None,
                 strategy_used=self.default_strategy,
