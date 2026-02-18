@@ -5,7 +5,7 @@ A **100% local** autonomous project manager that orchestrates multiple AI agents
 ![Status](https://img.shields.io/badge/Phase_1-Complete-brightgreen)
 ![Status](https://img.shields.io/badge/Phase_2-Complete-brightgreen)
 ![Status](https://img.shields.io/badge/Phase_3-Complete-brightgreen)
-![Status](https://img.shields.io/badge/Phase_4-Planned-yellow)
+![Status](https://img.shields.io/badge/Phase_4-Complete-brightgreen)
 
 ## Overview
 
@@ -21,7 +21,7 @@ The Orchestrator is a meta-agent system that coordinates three specialized agent
 ✅ **Phase 1 Complete** - The Blackboard (State Management)
 ✅ **Phase 2 Complete** - The Router (Intelligent Routing)
 ✅ **Phase 3 Complete** - The HITL Gate (Human-in-the-Loop)
-⏳ **Phase 4 Planned** - The Commander CLI (Terminal Interface)
+✅ **Phase 4 Complete** - The Command Center (Web Interface)
 
 ## The Build Plan: 4 Phases to Autonomy
 
@@ -81,17 +81,22 @@ The Orchestrator is a meta-agent system that coordinates three specialized agent
 
 📚 [View Phase 3 Documentation](docs/PHASE_3_GUIDE.md)
 
-### ⏳ Phase 4: The Commander CLI (PLANNED)
-**Focus**: Unified terminal interface for the entire system
+### ✅ Phase 4: The Command Center (COMPLETE)
+**Focus**: Unified web interface for the entire system
 
-**Tech Stack**: Click (Python), Rich
+**Tech Stack**: FastAPI, Jinja2, Vanilla JS, SSE
 
-**Planned Features**:
-- Interactive CLI for task management
-- Progress tracking with Rich UI
-- Configuration management
-- Log viewing
-- Agent health monitoring
+**Features Implemented**:
+- ✓ **Dashboard** - Real-time task submission and monitoring with SSE streaming
+- ✓ **Visual HITL Approvals** - Beautiful web interface for approval management
+- ✓ **Task History** - Complete execution history with filtering
+- ✓ **Analytics** - Comprehensive metrics (tasks, agents, approvals, routing, performance)
+- ✓ **Health Monitoring** - Real-time status for all 5 services (Research, Context, PR, Ollama, Redis)
+- ✓ **Jet Black Design** - Apple SF Pro inspired minimalist UI
+- ✓ **Live Updates** - SSE for progress, polling for health/approvals
+- ✓ Complete documentation and tests
+
+📚 [View Phase 4 Documentation](docs/PHASE_4_COMMAND_CENTER.md)
 
 ## The Workflow: How It Works
 
@@ -231,6 +236,34 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+```
+
+### Quick Start (Phase 4 - Command Center)
+
+```bash
+# Start the Command Center web interface
+uvicorn src.web.server:app --host 0.0.0.0 --port 8080
+
+# Access the dashboard at:
+# http://localhost:8080
+```
+
+**Features**:
+- **Dashboard** (`/`) - Submit and monitor tasks in real-time
+- **Approvals** (`/approvals`) - Review and approve risky operations
+- **History** (`/history`) - View all past task executions
+- **Analytics** (`/analytics`) - Performance metrics and insights
+
+**Example**: Submit a task via web UI or API:
+```bash
+curl -X POST http://localhost:8080/api/tasks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "objective": "Find best practices for Python async/await",
+    "max_iterations": 10,
+    "routing_strategy": "adaptive",
+    "enable_hitl": true
+  }'
 ```
 
 ### Run Demos

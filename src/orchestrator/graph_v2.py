@@ -179,7 +179,7 @@ class EnhancedOrchestratorGraph:
 
             # Add decision to messages
             task_state.add_message(
-                agent_type=AgentType.SUPERVISOR,
+                agent=AgentType.SUPERVISOR,
                 message_type=MessageType.INFO,
                 content={
                     "decision": "initial_route",
@@ -285,7 +285,7 @@ class EnhancedOrchestratorGraph:
 
             # Add decision to messages
             task_state.add_message(
-                agent_type=AgentType.SUPERVISOR,
+                agent=AgentType.SUPERVISOR,
                 message_type=MessageType.INFO,
                 content={
                     "decision": "next_route",

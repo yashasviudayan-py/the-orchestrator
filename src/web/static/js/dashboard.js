@@ -106,6 +106,9 @@ function connectToTaskStream(taskId, streamUrl) {
         const data = JSON.parse(e.data);
         console.log('Task started:', data);
         addEvent('Task started', 'system');
+
+        // Update button to show working state
+        elements.submitBtn.innerHTML = '<span class="spinner"></span> Working...';
     });
 
     // Agent start
@@ -189,7 +192,12 @@ function connectToTaskStream(taskId, streamUrl) {
             showFinalOutput(data.final_output);
         }
 
+        // Reset button
+        elements.submitBtn.disabled = false;
+        elements.submitBtn.textContent = 'Start Task';
+
         eventSource.close();
+        state.eventSource = null;
     });
 
     // Error
@@ -202,7 +210,12 @@ function connectToTaskStream(taskId, streamUrl) {
             addEvent(`✗ Error: ${data.error}`, 'system', 'error');
         }
 
+        // Reset button
+        elements.submitBtn.disabled = false;
+        elements.submitBtn.textContent = 'Start Task';
+
         eventSource.close();
+        state.eventSource = null;
     });
 
     // Keepalive
@@ -217,6 +230,10 @@ function connectToTaskStream(taskId, streamUrl) {
         // Retry logic could go here
         if (eventSource.readyState === EventSource.CLOSED) {
             addEvent('Connection closed', 'system', 'error');
+
+            // Reset button on connection failure
+            elements.submitBtn.disabled = false;
+            elements.submitBtn.textContent = 'Start Task';
         }
     };
 }

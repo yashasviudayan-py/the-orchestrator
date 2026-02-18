@@ -21,14 +21,177 @@
 
     <main class="main">
         <div class="container">
-            <h1 class="section-title">Analytics</h1>
-            <p class="section-subtitle">Performance metrics and insights for your orchestration system</p>
+            <!-- Header -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                <div>
+                    <h1 class="section-title">Analytics</h1>
+                    <p class="section-subtitle">Performance metrics and insights for your orchestration system</p>
+                </div>
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <select id="time-window" style="background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; font-size: 13px;">
+                        <option value="1">Last 24 hours</option>
+                        <option value="7" selected>Last 7 days</option>
+                        <option value="14">Last 14 days</option>
+                        <option value="30">Last 30 days</option>
+                    </select>
+                    <span id="last-updated" class="text-dim" style="font-size: 12px;"></span>
+                </div>
+            </div>
 
-            <div class="card">
-                <div class="card-title">Overview</div>
+            <!-- Task Statistics -->
+            <div class="card mb-3">
+                <div class="card-title">Task Statistics</div>
                 <div class="card-content">
-                    <p class="text-dim">Analytics data will appear here once you've run some tasks.</p>
-                    <p class="text-dim mt-2">You'll see agent usage patterns, success rates, routing decisions, and more.</p>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 24px;">
+                        <div class="stat-box">
+                            <div class="stat-label">Total Tasks</div>
+                            <div class="stat-value" id="total-tasks">-</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Success Rate</div>
+                            <div class="stat-value text-success" id="success-rate">-</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Avg Iterations</div>
+                            <div class="stat-value" id="avg-iterations">-</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Completed</div>
+                            <div class="stat-value text-success" id="tasks-completed">-</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Failed</div>
+                            <div class="stat-value text-error" id="tasks-failed">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Agent Usage -->
+            <div class="card mb-3">
+                <div class="card-title">Agent Usage</div>
+                <div class="card-content">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
+                        <!-- Research Agent -->
+                        <div style="padding: 16px; background: var(--bg-secondary); border-radius: 8px;">
+                            <div style="color: var(--text-secondary); font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                                <span>📚</span> Research Agent
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                <div>
+                                    <div class="text-dim" style="font-size: 12px;">Total Calls</div>
+                                    <div style="font-size: 20px; font-weight: 600; color: var(--text-primary);" id="research-calls">-</div>
+                                </div>
+                                <div>
+                                    <div class="text-dim" style="font-size: 12px;">Success Rate</div>
+                                    <div style="font-size: 20px; font-weight: 600; color: var(--success);" id="research-success">-</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Context Core -->
+                        <div style="padding: 16px; background: var(--bg-secondary); border-radius: 8px;">
+                            <div style="color: var(--text-secondary); font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                                <span>🧠</span> Context Core
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                <div>
+                                    <div class="text-dim" style="font-size: 12px;">Total Calls</div>
+                                    <div style="font-size: 20px; font-weight: 600; color: var(--text-primary);" id="context-calls">-</div>
+                                </div>
+                                <div>
+                                    <div class="text-dim" style="font-size: 12px;">Success Rate</div>
+                                    <div style="font-size: 20px; font-weight: 600; color: var(--success);" id="context-success">-</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- PR-Agent -->
+                        <div style="padding: 16px; background: var(--bg-secondary); border-radius: 8px;">
+                            <div style="color: var(--text-secondary); font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                                <span>💻</span> PR-Agent
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                <div>
+                                    <div class="text-dim" style="font-size: 12px;">Total Calls</div>
+                                    <div style="font-size: 20px; font-weight: 600; color: var(--text-primary);" id="pr-calls">-</div>
+                                </div>
+                                <div>
+                                    <div class="text-dim" style="font-size: 12px;">Success Rate</div>
+                                    <div style="font-size: 20px; font-weight: 600; color: var(--success);" id="pr-success">-</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row: Approvals + Performance -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                <!-- Approval Statistics -->
+                <div class="card">
+                    <div class="card-title">Approval Statistics</div>
+                    <div class="card-content">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                            <div class="stat-box">
+                                <div class="stat-label">Total Requests</div>
+                                <div class="stat-value" id="total-approvals">-</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-label">Approval Rate</div>
+                                <div class="stat-value text-success" id="approval-rate">-</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-label">Avg Response</div>
+                                <div class="stat-value" id="avg-response-time">-</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-label">Approved</div>
+                                <div class="stat-value text-success" id="approvals-approved">-</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-label">Rejected</div>
+                                <div class="stat-value text-error" id="approvals-rejected">-</div>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 16px;">
+                            <div style="color: var(--text-secondary); font-weight: 600; margin-bottom: 8px; font-size: 13px;">
+                                Risk Level Breakdown
+                            </div>
+                            <div id="risk-breakdown"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Performance Metrics -->
+                <div class="card">
+                    <div class="card-title">Performance Metrics</div>
+                    <div class="card-content">
+                        <div class="stat-box mb-3">
+                            <div class="stat-label">Average Completion Time</div>
+                            <div class="stat-value text-primary" id="avg-completion-time">-</div>
+                        </div>
+                        <div class="stat-box mb-3">
+                            <div class="stat-label">Fastest Task</div>
+                            <div class="stat-value text-success" id="min-completion-time">-</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Slowest Task</div>
+                            <div class="stat-value text-warning" id="max-completion-time">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Routing Decisions -->
+            <div class="card">
+                <div class="card-title">Routing Decisions</div>
+                <div class="card-content">
+                    <div style="color: var(--text-secondary); font-weight: 600; margin-bottom: 12px; font-size: 13px;">
+                        Top Agent Transitions
+                    </div>
+                    <div id="routing-transitions"></div>
                 </div>
             </div>
         </div>
@@ -39,5 +202,8 @@
             The Orchestrator • 100% Local • No Cloud APIs • Full Privacy
         </div>
     </footer>
+
+    <!-- JavaScript -->
+    <script src="/static/js/analytics.js"></script>
 </body>
 </html>

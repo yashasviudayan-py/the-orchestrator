@@ -13,7 +13,6 @@ from .approval_manager import (
     ApprovalTimeout,
     get_approval_manager,
 )
-from .server import app
 
 __all__ = [
     # Approval schemas
@@ -27,6 +26,4 @@ __all__ = [
     "ApprovalManager",
     "ApprovalTimeout",
     "get_approval_manager",
-    # FastAPI app
-    "app",
 ]

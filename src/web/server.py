@@ -34,6 +34,8 @@ from .models import (
     ProgressEventType,
 )
 from .task_manager import get_task_manager
+from .health_monitor import get_health_monitor
+from .analytics import get_analytics_service
 from ..state.schemas import TaskStatus
 
 logger = logging.getLogger(__name__)
@@ -387,30 +389,76 @@ async def get_approval_stats():
 @app.get("/api/health", response_model=HealthResponse)
 async def health_check():
     """Check overall system health."""
-    agents_health = {}
+    health_monitor = get_health_monitor()
 
-    # TODO: Implement actual health checks for agents
-    # For now, return unknown status
-    agents_health["research"] = AgentStatus.UNKNOWN
-    agents_health["context"] = AgentStatus.UNKNOWN
-    agents_health["pr"] = AgentStatus.UNKNOWN
-    agents_health["ollama"] = AgentStatus.UNKNOWN
-    agents_health["redis"] = AgentStatus.UNKNOWN
+    # Run all health checks
+    agents_health = await health_monitor.check_all()
 
     # Determine overall status
-    statuses = list(agents_health.values())
-    if any(s == AgentStatus.DOWN for s in statuses):
-        overall = "down"
-    elif any(s == AgentStatus.DEGRADED for s in statuses):
-        overall = "degraded"
-    else:
-        overall = "healthy"
+    overall = health_monitor.get_overall_status(agents_health)
+
+    # Build details dictionary with additional info
+    details = {
+        "timestamp": health_monitor.settings.timestamp() if hasattr(health_monitor.settings, 'timestamp') else None,
+        "version": "1.0.0",
+    }
 
     return HealthResponse(
         status=overall,
         agents=agents_health,
-        details={},
+        details=details,
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Analytics API
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.get("/api/analytics/overview")
+async def get_analytics_overview(days: int = Query(7, ge=1, le=30)):
+    """
+    Get complete analytics overview.
+
+    Args:
+        days: Number of days to look back (1-30)
+    """
+    analytics = get_analytics_service()
+    return analytics.get_overview(days=days)
+
+
+@app.get("/api/analytics/tasks")
+async def get_task_analytics(days: int = Query(7, ge=1, le=30)):
+    """Get task statistics."""
+    analytics = get_analytics_service()
+    return analytics.get_task_statistics(days=days)
+
+
+@app.get("/api/analytics/agents")
+async def get_agent_analytics(days: int = Query(7, ge=1, le=30)):
+    """Get agent usage statistics."""
+    analytics = get_analytics_service()
+    return analytics.get_agent_statistics(days=days)
+
+
+@app.get("/api/analytics/approvals")
+async def get_approval_analytics(days: int = Query(7, ge=1, le=30)):
+    """Get approval statistics."""
+    analytics = get_analytics_service()
+    return analytics.get_approval_statistics(days=days)
+
+
+@app.get("/api/analytics/routing")
+async def get_routing_analytics(days: int = Query(7, ge=1, le=30)):
+    """Get routing decision statistics."""
+    analytics = get_analytics_service()
+    return analytics.get_routing_statistics(days=days)
+
+
+@app.get("/api/analytics/performance")
+async def get_performance_analytics(days: int = Query(7, ge=1, le=30)):
+    """Get performance metrics."""
+    analytics = get_analytics_service()
+    return analytics.get_performance_metrics(days=days)
 
 
 # ═══════════════════════════════════════════════════════════════════════

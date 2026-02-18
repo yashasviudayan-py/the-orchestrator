@@ -120,8 +120,50 @@ class EnhancedSupervisor:
 
     async def _adaptive_strategy(self, objective: str) -> RoutingDecision:
         """
-        Use LLM to decide best first agent based on objective.
+        Use fast heuristics + LLM to decide best first agent.
+        Heuristics first for speed, LLM only for complex cases.
         """
+        objective_lower = objective.lower()
+
+        # ⚡ FAST HEURISTICS (instant routing for common patterns)
+
+        # 1. Knowledge/Research questions (tell me, what is, how does, explain)
+        research_keywords = ['tell me', 'what is', 'how does', 'explain', 'who is', 'why is',
+                            'describe', 'information about', 'details about', 'learn about']
+        if any(kw in objective_lower for kw in research_keywords):
+            return RoutingDecision(
+                next_agent=AgentType.RESEARCH,
+                strategy_used=RoutingStrategy.ADAPTIVE,
+                reasoning="Knowledge question detected - using Research for external information",
+                confidence=0.95,
+                alternative_agents=[AgentType.CONTEXT, AgentType.PR],
+            )
+
+        # 2. Context/History questions (my code, working on, current project, existing)
+        context_keywords = ['my code', 'working on', 'current project', 'existing',
+                           'already have', 'previous', 'past work', 'history']
+        if any(kw in objective_lower for kw in context_keywords):
+            return RoutingDecision(
+                next_agent=AgentType.CONTEXT,
+                strategy_used=RoutingStrategy.ADAPTIVE,
+                reasoning="Codebase/history question detected - checking Context first",
+                confidence=0.95,
+                alternative_agents=[AgentType.RESEARCH, AgentType.PR],
+            )
+
+        # 3. Simple fixes (fix typo, update text, change color)
+        if any(word in objective_lower for word in ['fix typo', 'change text', 'update label']):
+            return RoutingDecision(
+                next_agent=AgentType.PR,
+                strategy_used=RoutingStrategy.ADAPTIVE,
+                reasoning="Simple fix detected - going straight to PR",
+                confidence=0.9,
+                alternative_agents=[AgentType.RESEARCH, AgentType.CONTEXT],
+            )
+
+        # 🧠 COMPLEX CASES: Use LLM for ambiguous tasks
+        logger.info("No clear heuristic match - using LLM for routing decision")
+
         prompt = f"""Analyze this software development task and determine the BEST first agent to call.
 
 Task: {objective}

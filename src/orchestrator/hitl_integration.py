@@ -76,7 +76,7 @@ class HITLGate:
 
             # Log decision to task state
             task_state.add_message(
-                agent_type=AgentType.SUPERVISOR,
+                agent=AgentType.SUPERVISOR,
                 message_type=MessageType.INFO,
                 content={
                     "hitl_decision": "approved" if response.approved else "rejected",
