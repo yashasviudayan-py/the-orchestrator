@@ -101,3 +101,30 @@ class AgentValidationError(AgentError):
     """Raised when agent input validation fails."""
 
     pass
+
+
+class UnavailableAgentStub(AgentInterface):
+    """
+    Drop-in stub for agents that couldn't be initialized.
+
+    Returns a clear error result instead of crashing the server.
+    Used when agent paths don't exist or imports fail at startup.
+    """
+
+    def __init__(self, name: str, reason: str):
+        super().__init__(name)
+        self.reason = reason
+        self.logger.warning(f"Agent '{name}' is unavailable: {reason}")
+
+    async def execute(self, task_input: dict[str, Any]) -> dict[str, Any]:
+        raise AgentConnectionError(
+            self.name,
+            f"Agent unavailable at startup: {self.reason}",
+        )
+
+    async def health_check(self) -> bool:
+        return False
+
+    def filter_secrets(self, text: str) -> tuple[str, bool]:
+        """Passthrough — no filtering when Context Core is unavailable."""
+        return text, False

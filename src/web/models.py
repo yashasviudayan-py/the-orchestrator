@@ -131,6 +131,7 @@ class ProgressEvent(BaseModel):
     event: ProgressEventType
     data: Dict[str, Any]
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+    event_id: int = 0  # Sequential ID for Last-Event-ID replay tracking
 
 
 # ═══════════════════════════════════════════════════════════════════════

@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader
@@ -22,6 +22,7 @@ from ..agents import (
     ResearchAgentInterface,
     ContextCoreInterface,
     PRAgentInterface,
+    UnavailableAgentStub,
 )
 from ..api.approval_manager import get_approval_manager
 from .models import (
@@ -57,12 +58,25 @@ async def lifespan(application: FastAPI):
     """Manage application startup and shutdown."""
     logger.info("🚀 The Orchestrator - Command Center starting...")
 
-    # Initialize agents
+    # Initialize agents — use stubs for unavailable agents so the server
+    # always starts and tasks fail with a clear message instead of silently.
     settings = get_cached_settings()
 
     research_agent = ResearchAgentInterface(settings.research_agent_url)
-    context_agent = ContextCoreInterface(settings.context_core_path)
-    pr_agent = PRAgentInterface(settings.pr_agent_path)
+
+    try:
+        context_agent = ContextCoreInterface(settings.context_core_path)
+        logger.info("✓ Context Core initialized")
+    except Exception as e:
+        logger.warning(f"Context Core unavailable — using stub: {e}")
+        context_agent = UnavailableAgentStub("context", str(e))
+
+    try:
+        pr_agent = PRAgentInterface(settings.pr_agent_path)
+        logger.info("✓ PR-Agent initialized")
+    except Exception as e:
+        logger.warning(f"PR-Agent unavailable — using stub: {e}")
+        pr_agent = UnavailableAgentStub("pr", str(e))
 
     # Initialize task manager
     get_task_manager(
@@ -219,22 +233,12 @@ async def get_task(task_id: str):
 
 
 @app.get("/api/tasks/{task_id}/stream")
-async def stream_task_progress(task_id: str):
+async def stream_task_progress(task_id: str, request: Request):
     """
     Stream real-time progress updates for a task via Server-Sent Events.
 
-    The client should listen for the following event types:
-    - task_start: Task has started
-    - agent_start: Agent is starting
-    - agent_progress: Agent progress update
-    - agent_complete: Agent finished
-    - approval_required: Approval needed (HITL)
-    - approval_decided: Approval decision made
-    - iteration: New iteration started
-    - routing_decision: Supervisor routing decision
-    - complete: Task completed successfully
-    - error: Task failed
-    - keepalive: Connection keepalive ping
+    Supports Last-Event-ID header so reconnecting clients only receive
+    events they haven't seen yet, preventing duplicate display in the UI.
     """
     task_manager = get_task_manager()
 
@@ -242,32 +246,41 @@ async def stream_task_progress(task_id: str):
     if not task_manager.get_task_info(task_id):
         raise HTTPException(404, "Task not found")
 
+    # Determine which events the client has already received
+    last_event_id_header = request.headers.get("Last-Event-ID", "")
+    try:
+        last_seen_id = int(last_event_id_header)
+    except (ValueError, TypeError):
+        last_seen_id = -1  # Client hasn't seen any events
+
     async def event_generator():
-        """Generate SSE events for task progress."""
+        """Generate SSE events, skipping already-seen ones on reconnect."""
         queue = await task_manager.get_event_queue(task_id)
 
-        # Send existing events first
+        # Replay only events the client hasn't seen yet
         existing_events = task_manager.get_events(task_id)
         for event in existing_events:
-            data = json.dumps(event.data)
-            yield f"event: {event.event.value}\ndata: {data}\n\n"
+            if event.event_id > last_seen_id:
+                data = json.dumps(event.data)
+                yield f"id: {event.event_id}\nevent: {event.event.value}\ndata: {data}\n\n"
 
-        # Stream new events
+        # If task already finished, close — no need to stream
+        task_info = task_manager.get_task_info(task_id)
+        if task_info and task_info.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
+            return
+
+        # Stream new events as they arrive
         while True:
             try:
-                # Wait for next event with timeout
                 event = await asyncio.wait_for(queue.get(), timeout=30.0)
 
-                # Send event
                 data = json.dumps(event.data)
-                yield f"event: {event.event.value}\ndata: {data}\n\n"
+                yield f"id: {event.event_id}\nevent: {event.event.value}\ndata: {data}\n\n"
 
-                # Stop streaming on completion or error
                 if event.event in [ProgressEventType.COMPLETE, ProgressEventType.ERROR]:
                     break
 
             except asyncio.TimeoutError:
-                # Send keepalive to prevent connection from closing
                 yield f"event: keepalive\ndata: {{}}\n\n"
 
             except Exception as e:

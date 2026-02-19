@@ -13,7 +13,7 @@ from typing import Dict, Optional, List
 from collections import defaultdict
 
 from ..state.schemas import TaskState, TaskStatus
-from ..orchestrator import EnhancedOrchestratorGraph, create_hitl_enabled_graph, RoutingStrategy
+from ..orchestrator import EnhancedOrchestratorGraph, create_hitl_enabled_graph
 from ..agents import ResearchAgentInterface, ContextCoreInterface, PRAgentInterface
 from .models import TaskRequest, TaskInfo, ProgressEvent, ProgressEventType
 
@@ -73,6 +73,19 @@ class TaskManager:
 
         # Background task handles {task_id: asyncio.Task}
         self.background_tasks: Dict[str, asyncio.Task] = {}
+
+        # Build the orchestrator once and reuse across tasks (LangGraph
+        # compilation is expensive; the graph is stateless between runs).
+        self._orchestrator = create_hitl_enabled_graph(
+            base_graph_class=EnhancedOrchestratorGraph,
+            enable_hitl=True,
+            research_agent=self.research_agent,
+            context_agent=self.context_agent,
+            pr_agent=self.pr_agent,
+            llm_base_url=self.llm_base_url,
+            llm_model=self.llm_model,
+        )
+        logger.info("Orchestrator graph compiled and ready")
 
         # Load task history from disk
         self._load_tasks()
@@ -160,18 +173,9 @@ class TaskManager:
         """
         logger.info(f"🚀 BACKGROUND TASK STARTED for {task_id}")
         try:
-            logger.info(f"Creating orchestrator for {task_id}")
-            # Create orchestrator with HITL if enabled
-            orchestrator = create_hitl_enabled_graph(
-                base_graph_class=EnhancedOrchestratorGraph,
-                enable_hitl=request.enable_hitl,
-                research_agent=self.research_agent,
-                context_agent=self.context_agent,
-                pr_agent=self.pr_agent,
-                llm_base_url=self.llm_base_url,
-                llm_model=self.llm_model,
-                routing_strategy=request.routing_strategy,
-            )
+            # Reuse the shared orchestrator — toggle HITL per request
+            orchestrator = self._orchestrator
+            orchestrator.hitl_gate.enabled = request.enable_hitl
 
             # Run orchestration
             logger.info(f"Running orchestration for task {task_id}")
@@ -282,9 +286,11 @@ class TaskManager:
             event_type: Event type
             data: Event data
         """
+        event_id = len(self.events[task_id])  # 0-based sequential index
         event = ProgressEvent(
             event=event_type,
             data=data,
+            event_id=event_id,
         )
 
         # Store event
@@ -301,7 +307,7 @@ class TaskManager:
         current_agent: Optional[str] = None,
         iteration: Optional[int] = None,
     ) -> None:
-        """Update task info metadata."""
+        """Update task info metadata and keep task_state in sync."""
         if task_id not in self.task_info:
             return
 
@@ -309,12 +315,23 @@ class TaskManager:
 
         if status is not None:
             info.status = status
+            # Keep tasks dict in sync so the REST API reflects live status
+            if task_id in self.tasks:
+                self.tasks[task_id].status = status
 
         if current_agent is not None:
             info.current_agent = current_agent
+            if task_id in self.tasks:
+                try:
+                    from ..state.schemas import AgentType
+                    self.tasks[task_id].current_agent = AgentType(current_agent)
+                except (ValueError, TypeError):
+                    pass
 
         if iteration is not None:
             info.iteration = iteration
+            if task_id in self.tasks:
+                self.tasks[task_id].iteration = iteration
 
         info.updated_at = datetime.utcnow()
 
