@@ -148,11 +148,61 @@ Respond with ONLY the first agent name to call: research, context, or pr
             logger.info("Research completed successfully")
 
         except AgentError as e:
-            logger.error(f"Research agent failed: {e}")
-            task_state.add_error(str(e))
-            task_state.retry_count += 1
+            logger.warning(f"Research Agent unavailable ({e}) — falling back to Ollama")
+            task_state = await self._ollama_research_fallback(task_state)
 
         return task_state.model_dump()
+
+    async def _ollama_research_fallback(self, task_state: TaskState) -> TaskState:
+        """
+        Fallback when Research Agent is down — use Ollama directly to answer.
+        Not as thorough as the full Research Agent (no web search, no sources)
+        but keeps the pipeline working.
+        """
+        logger.info("Using Ollama as research fallback")
+
+        prompt = f"""You are a knowledgeable assistant. Answer the following question thoroughly and accurately.
+
+Question: {task_state.objective}
+
+Provide a well-structured answer covering:
+1. Direct answer to the question
+2. Key concepts and best practices
+3. Practical examples where relevant
+4. Important considerations or caveats
+
+Answer:"""
+
+        try:
+            response = await self.llm.ainvoke(prompt)
+            content = response.content.strip()
+
+            task_state.research_results = ResearchResult(
+                topic=task_state.objective,
+                summary=content[:500],
+                content=content,
+                key_findings=[],
+                urls=[],
+            )
+
+            task_state.add_message(
+                AgentType.RESEARCH,
+                MessageType.RESPONSE,
+                {
+                    "summary": content[:500],
+                    "source": "ollama_fallback",
+                    "note": "Research Agent was unavailable — answered directly by Ollama",
+                },
+            )
+
+            logger.info("Ollama fallback research completed")
+
+        except Exception as e:
+            logger.error(f"Ollama fallback also failed: {e}")
+            task_state.add_error(f"Research failed (both agent and fallback): {str(e)}")
+            task_state.retry_count += 1
+
+        return task_state
 
     async def call_context_agent(self, state: dict) -> dict:
         """

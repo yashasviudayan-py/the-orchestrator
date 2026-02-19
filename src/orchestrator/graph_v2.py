@@ -310,12 +310,12 @@ class EnhancedOrchestratorGraph:
         logger.info("Finalizing task with enhanced summary")
 
         try:
-            # Get comprehensive state summary
-            state_summary = await self.summarizer.summarize_task_state(task_state)
-
-            # Use original finalize logic
+            # Finalize first so the state has the correct completed status
             final_dict = await self.nodes.finalize(state)
             final_state = TaskState(**final_dict)
+
+            # Now summarize the completed state (status will be "completed")
+            state_summary = await self.summarizer.summarize_task_state(final_state)
 
             # Enhance final output with summary
             if final_state.final_output:
