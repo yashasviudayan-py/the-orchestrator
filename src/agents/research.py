@@ -147,13 +147,13 @@ class ResearchAgentInterface(AgentInterface):
 
                         if report_response.status_code == 200:
                             data = report_response.json()
+                            content = data.get("content", "")
                             return {
                                 "topic": data.get("topic", topic),
-                                "summary": self._extract_summary(data.get("content", "")),
+                                "summary": self._extract_summary(content),
+                                "content": content,  # Include FULL report content
                                 "urls": data.get("urls", []),
-                                "key_findings": self._extract_key_findings(
-                                    data.get("content", "")
-                                ),
+                                "key_findings": self._extract_key_findings(content),
                                 "report_path": f"reports/{report_id}.md",
                                 "elapsed_ms": data.get("elapsed_ms", 0.0),
                             }
@@ -179,13 +179,13 @@ class ResearchAgentInterface(AgentInterface):
             if response.status_code == 200:
                 # Job complete - get report
                 data = response.json()
+                content = data.get("content", "")
                 return {
                     "topic": data.get("topic", ""),
-                    "summary": self._extract_summary(data.get("content", "")),
+                    "summary": self._extract_summary(content),
+                    "content": content,  # Include FULL report content
                     "urls": data.get("urls", []),
-                    "key_findings": self._extract_key_findings(
-                        data.get("content", "")
-                    ),
+                    "key_findings": self._extract_key_findings(content),
                     "report_path": f"reports/{job_id}.md",
                     "elapsed_ms": data.get("elapsed_ms", 0.0),
                 }

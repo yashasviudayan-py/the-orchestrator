@@ -62,6 +62,7 @@ class ResearchResult(BaseModel):
     topic: str
     report_path: Optional[str] = None
     summary: Optional[str] = None
+    content: Optional[str] = None  # Full report content in markdown
     urls: list[str] = Field(default_factory=list)
     key_findings: list[str] = Field(default_factory=list)
     elapsed_ms: float = 0.0

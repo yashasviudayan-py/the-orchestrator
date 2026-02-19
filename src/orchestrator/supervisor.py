@@ -262,12 +262,20 @@ Agent:"""
 {state_summary}
 
 Decision Logic:
-- If PR successful → DONE
-- If research not done and needed → RESEARCH
-- If context not checked and could help → CONTEXT
-- If ready to implement → PR
-- If errors in agent and retries available → retry that agent
-- If stuck or max iterations near → DONE
+1. INFORMATIONAL QUERIES (tell me about, what is, explain, research):
+   - If research complete → DONE (no code needed!)
+
+2. CODE IMPLEMENTATION QUERIES (add feature, implement, build, create):
+   - If research not done → RESEARCH
+   - If context needed (check existing code) → CONTEXT
+   - If ready to write code → PR
+   - If PR successful → DONE
+
+3. SAFETY:
+   - If stuck or max iterations near → DONE
+   - If errors and no retries → DONE
+
+CRITICAL: For pure informational/research queries, return DONE after research completes!
 
 Respond with ONLY: RESEARCH, CONTEXT, PR, or DONE
 

@@ -26,9 +26,8 @@
 
             <div class="card">
                 <div class="card-title">Recent Tasks</div>
-                <div class="card-content">
-                    <p class="text-dim">No task history yet.</p>
-                    <p class="text-dim mt-2">Completed tasks will appear here with full execution details.</p>
+                <div class="card-content" id="tasks-container">
+                    <p class="text-dim">Loading task history...</p>
                 </div>
             </div>
         </div>
@@ -39,5 +38,104 @@
             The Orchestrator • 100% Local • No Cloud APIs • Full Privacy
         </div>
     </footer>
+
+    <script>
+        // Fetch and display task history
+        async function loadHistory() {
+            const container = document.getElementById('tasks-container');
+
+            try {
+                const response = await fetch('/api/tasks');
+                const data = await response.json();
+
+                if (data.tasks && data.tasks.length > 0) {
+                    let html = '<div style="overflow-x: auto;"><table style="width: 100%; border-collapse: collapse;">';
+                    html += '<thead><tr style="border-bottom: 1px solid var(--border);">';
+                    html += '<th style="padding: 12px; text-align: left;">Task</th>';
+                    html += '<th style="padding: 12px; text-align: left;">Status</th>';
+                    html += '<th style="padding: 12px; text-align: left;">Agent</th>';
+                    html += '<th style="padding: 12px; text-align: left;">Duration</th>';
+                    html += '<th style="padding: 12px; text-align: left;">Completed</th>';
+                    html += '<th style="padding: 12px; text-align: left;">Actions</th>';
+                    html += '</tr></thead><tbody>';
+
+                    data.tasks.forEach((task, index) => {
+                        const statusColor = task.status === 'completed' ? 'var(--success)' :
+                                          task.status === 'failed' ? 'var(--danger)' :
+                                          'var(--warning)';
+                        const duration = (task.duration_ms / 1000).toFixed(1) + 's';
+                        const completed = task.completed_at ?
+                            new Date(task.completed_at).toLocaleString() : '-';
+
+                        html += `<tr style="border-bottom: 1px solid var(--border-light);" id="task-${index}">`;
+                        html += `<td style="padding: 12px;">${task.objective}</td>`;
+                        html += `<td style="padding: 12px;"><span style="color: ${statusColor};">${task.status}</span></td>`;
+                        html += `<td style="padding: 12px;">${task.current_agent || '-'}</td>`;
+                        html += `<td style="padding: 12px;">${duration}</td>`;
+                        html += `<td style="padding: 12px;">${completed}</td>`;
+                        html += `<td style="padding: 12px;"><button onclick="viewTask('${task.task_id}')" style="padding: 6px 12px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer;">View</button></td>`;
+                        html += '</tr>';
+                    });
+
+                    html += '</tbody></table></div>';
+                    html += '<div id="task-details" style="margin-top: 24px;"></div>';
+                    container.innerHTML = html;
+                } else {
+                    container.innerHTML = '<p class="text-dim">No task history yet.</p>' +
+                        '<p class="text-dim mt-2">Completed tasks will appear here with full execution details.</p>';
+                }
+            } catch (error) {
+                console.error('Failed to load history:', error);
+                container.innerHTML = '<p style="color: var(--danger);">Failed to load task history.</p>';
+            }
+        }
+
+        // View task details
+        async function viewTask(taskId) {
+            const detailsContainer = document.getElementById('task-details');
+            detailsContainer.innerHTML = '<div class="card"><div class="card-content"><p class="text-dim">Loading task details...</p></div></div>';
+
+            try {
+                const response = await fetch(`/api/tasks/${taskId}`);
+                const task = await response.json();
+
+                let html = '<div class="card">';
+                html += '<div class="card-title">Task Details</div>';
+                html += '<div class="card-content">';
+
+                // Task info
+                html += `<h3 style="margin-bottom: 12px;">${task.objective}</h3>`;
+                html += `<p style="color: var(--text-secondary); margin-bottom: 16px;">`;
+                html += `Status: <span style="color: ${task.status === 'completed' ? 'var(--success)' : 'var(--danger)'};">${task.status}</span> | `;
+                html += `Duration: ${(task.duration_ms / 1000).toFixed(1)}s | `;
+                html += `Iterations: ${task.iteration}/${task.max_iterations}`;
+                html += `</p>`;
+
+                // Final output
+                if (task.final_output) {
+                    html += '<div style="background: var(--bg-secondary); padding: 16px; border-radius: 4px; margin-top: 16px; white-space: pre-wrap; font-family: system-ui;">';
+                    html += task.final_output;
+                    html += '</div>';
+                } else {
+                    html += '<p class="text-dim">No output available.</p>';
+                }
+
+                html += '<button onclick="document.getElementById(\'task-details\').innerHTML = \'\'" style="margin-top: 16px; padding: 8px 16px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 4px; cursor: pointer;">Close</button>';
+                html += '</div></div>';
+
+                detailsContainer.innerHTML = html;
+                detailsContainer.scrollIntoView({ behavior: 'smooth' });
+            } catch (error) {
+                console.error('Failed to load task details:', error);
+                detailsContainer.innerHTML = '<div class="card"><div class="card-content"><p style="color: var(--danger);">Failed to load task details.</p></div></div>';
+            }
+        }
+
+        // Load on page load
+        loadHistory();
+
+        // Refresh every 30 seconds
+        setInterval(loadHistory, 30000);
+    </script>
 </body>
 </html>

@@ -5,8 +5,10 @@ Manages background execution of orchestration tasks and progress tracking.
 """
 
 import asyncio
+import json
 import logging
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, Optional, List
 from collections import defaultdict
 
@@ -53,6 +55,10 @@ class TaskManager:
         self.llm_base_url = llm_base_url
         self.llm_model = llm_model
 
+        # Storage path for task history
+        self.storage_path = Path.home() / ".orchestrator" / "task_history.json"
+        self.storage_path.parent.mkdir(parents=True, exist_ok=True)
+
         # Active tasks {task_id: TaskState}
         self.tasks: Dict[str, TaskState] = {}
 
@@ -67,6 +73,9 @@ class TaskManager:
 
         # Background task handles {task_id: asyncio.Task}
         self.background_tasks: Dict[str, asyncio.Task] = {}
+
+        # Load task history from disk
+        self._load_tasks()
 
     async def start_task(self, request: TaskRequest) -> TaskState:
         """
@@ -219,6 +228,9 @@ class TaskManager:
                 iteration=result.iteration,
             )
 
+            # Save to disk
+            self._save_tasks()
+
             # Emit completion event
             await self._emit_event(
                 task_id,
@@ -238,6 +250,9 @@ class TaskManager:
 
             # Update status
             self._update_task_info(task_id, status=TaskStatus.FAILED)
+
+            # Save to disk
+            self._save_tasks()
 
             # Emit error event
             await self._emit_event(
@@ -382,6 +397,67 @@ class TaskManager:
             return True
 
         return False
+
+    def _load_tasks(self):
+        """Load task history from JSON file."""
+        if not self.storage_path.exists():
+            logger.info("No task history file found - starting fresh")
+            return
+
+        try:
+            with open(self.storage_path, 'r') as f:
+                data = json.load(f)
+
+            # Load tasks
+            for task_dict in data.get('tasks', []):
+                try:
+                    task_state = TaskState(**task_dict)
+                    self.tasks[task_state.task_id] = task_state
+                except Exception as e:
+                    logger.warning(f"Failed to load task {task_dict.get('task_id')}: {e}")
+
+            # Load task info
+            for info_dict in data.get('task_info', []):
+                try:
+                    task_info = TaskInfo(**info_dict)
+                    self.task_info[task_info.task_id] = task_info
+                except Exception as e:
+                    logger.warning(f"Failed to load task info {info_dict.get('task_id')}: {e}")
+
+            logger.info(f"Loaded {len(self.tasks)} tasks from history")
+
+        except Exception as e:
+            logger.error(f"Failed to load task history: {e}")
+
+    def _save_tasks(self):
+        """Save task history to JSON file."""
+        try:
+            # Convert tasks and task_info to JSON-serializable dicts
+            tasks_data = []
+            for task in self.tasks.values():
+                # Only save completed or failed tasks
+                if task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
+                    tasks_data.append(task.model_dump(mode='json'))
+
+            task_info_data = []
+            for info in self.task_info.values():
+                if info.task_id in [t['task_id'] for t in tasks_data]:
+                    task_info_data.append(info.model_dump(mode='json'))
+
+            data = {
+                'tasks': tasks_data,
+                'task_info': task_info_data,
+                'saved_at': datetime.now().isoformat(),
+            }
+
+            # Write to file
+            with open(self.storage_path, 'w') as f:
+                json.dump(data, f, indent=2)
+
+            logger.debug(f"Saved {len(tasks_data)} tasks to history")
+
+        except Exception as e:
+            logger.error(f"Failed to save task history: {e}")
 
 
 # Singleton instance

@@ -143,11 +143,26 @@ function connectToTaskStream(taskId, streamUrl) {
         const data = JSON.parse(e.data);
         console.log('Agent progress:', data);
 
+        // Update current agent display
+        if (data.current_agent) {
+            updateCurrentAgent(data.current_agent);
+            state.currentAgent = data.current_agent;
+        }
+
+        // Update iteration display
+        if (typeof data.iteration === 'number') {
+            updateIteration(data.iteration, 10);
+        }
+
+        // Update progress bar if provided
         if (data.progress) {
             updateProgress(data.progress);
         }
 
-        addEvent(data.message || 'Progress update', state.currentAgent);
+        // Add event to timeline
+        if (data.current_agent) {
+            addEvent(`${data.current_agent} agent working...`, data.current_agent);
+        }
     });
 
     // Agent complete

@@ -365,8 +365,42 @@ Respond with ONLY: research, context, pr, or DONE
             output_parts.append(f"# Task Completed: {task_state.objective}\n")
 
             if task_state.research_results:
-                output_parts.append("## Research")
-                output_parts.append(task_state.research_results.summary or "Research completed")
+                output_parts.append("## Answer\n")
+
+                # Generate readable summary using LLM
+                if task_state.research_results.content:
+                    # Use LLM to create concise, readable answer
+                    summary_prompt = f"""Based on this research about "{task_state.objective}", provide a concise, well-structured answer.
+
+Research content (first 3000 chars):
+{task_state.research_results.content[:3000]}
+
+Provide a clear answer (300-500 words) that:
+1. Directly answers: {task_state.objective}
+2. Includes key facts
+3. Is well-organized and readable
+4. Uses plain language
+
+Answer:"""
+
+                    try:
+                        response = await self.llm.ainvoke(summary_prompt)
+                        readable_answer = response.content.strip()
+                        output_parts.append(readable_answer)
+                    except Exception as e:
+                        logger.warning(f"Failed to generate answer: {e}")
+                        # Fallback to first 1000 chars
+                        output_parts.append(task_state.research_results.content[:1000] + "\n\n[Content truncated]")
+
+                    # Add sources
+                    if task_state.research_results.urls:
+                        output_parts.append("\n\n### Sources:")
+                        for url in task_state.research_results.urls[:5]:
+                            output_parts.append(f"- {url}")
+                else:
+                    # Fallback
+                    if task_state.research_results.summary:
+                        output_parts.append(task_state.research_results.summary)
 
             if task_state.context_results:
                 output_parts.append("\n## Context")
