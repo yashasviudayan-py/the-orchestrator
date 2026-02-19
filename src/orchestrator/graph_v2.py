@@ -193,7 +193,7 @@ class EnhancedOrchestratorGraph:
         except Exception as e:
             logger.error(f"Supervisor entry failed: {e}")
             # Fallback to research
-            task_state.next_agent = "research"
+            task_state.next_agent = AgentType.RESEARCH
             task_state.add_error(f"Supervisor entry error: {str(e)}")
 
         return task_state.model_dump()

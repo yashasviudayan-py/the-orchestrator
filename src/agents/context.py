@@ -238,8 +238,9 @@ class ContextCoreInterface(AgentInterface):
             self.logger.warning(
                 f"Secrets detected: {scan_result['descriptions']}"
             )
-            # In a real implementation, we'd replace secrets with [REDACTED]
-            # For now, we just flag it
-            return text, True
+            filtered = text
+            for secret in scan_result["matched_patterns"]:
+                filtered = filtered.replace(secret, "[REDACTED]")
+            return filtered, True
 
         return text, False
