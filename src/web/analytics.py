@@ -10,7 +10,7 @@ Provides analytics data for:
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 from collections import defaultdict
 
@@ -28,11 +28,20 @@ def _get(task, key, default=None):
         val = task.get(key, default)
         if val and key in ('created_at', 'updated_at', 'completed_at') and isinstance(val, str):
             try:
-                return datetime.fromisoformat(val)
+                dt = datetime.fromisoformat(val)
+                # Ensure timezone-aware so comparisons with timezone.utc cutoff work
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
             except (ValueError, TypeError):
                 return default
         return val
-    return getattr(task, key, default)
+    val = getattr(task, key, default)
+    # Also normalise datetime attributes on objects
+    if val is not None and key in ('created_at', 'updated_at', 'completed_at') and isinstance(val, datetime):
+        if val.tzinfo is None:
+            val = val.replace(tzinfo=timezone.utc)
+    return val
 
 
 def _status_str(task) -> str:
@@ -68,10 +77,16 @@ class AnalyticsService:
         Returns:
             Dictionary with task statistics
         """
+        if not self.task_manager:
+            return {
+                'total_tasks': 0, 'status_breakdown': {}, 'success_rate': 0.0,
+                'average_iterations': 0.0, 'completed': 0, 'failed': 0,
+                'pending': 0, 'running': 0,
+            }
         all_tasks = self.task_manager.list_tasks(limit=1000)
 
         # Filter by time window
-        cutoff = datetime.now() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         recent_tasks = [
             t for t in all_tasks
             if _get(t, 'created_at') and _get(t, 'created_at') > cutoff
@@ -117,10 +132,13 @@ class AnalyticsService:
         Returns:
             Dictionary with agent usage stats
         """
+        if not self.task_manager:
+            return {a: {'total_calls': 0, 'successful': 0, 'errors': 0, 'success_rate': 0.0}
+                    for a in ['research', 'context', 'pr']}
         all_tasks = self.task_manager.list_tasks(limit=1000)
 
         # Filter by time window
-        cutoff = datetime.now() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         recent_tasks = [
             t for t in all_tasks
             if _get(t, 'created_at') and _get(t, 'created_at') > cutoff
@@ -183,13 +201,23 @@ class AnalyticsService:
         Returns:
             Dictionary with approval stats
         """
+        if not self.approval_manager:
+            return {
+                'total_requests': 0, 'status_breakdown': {}, 'risk_breakdown': {},
+                'approval_rate': 0.0, 'average_response_time': 0.0,
+                'approved': 0, 'rejected': 0, 'pending': 0, 'timeout': 0,
+            }
         all_history = self.approval_manager.get_history(limit=1000)
 
         # Filter by time window
-        cutoff = datetime.now() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+        def _aware(dt: datetime) -> datetime:
+            return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
         recent_approvals = [
             a for a in all_history
-            if a.created_at > cutoff
+            if _aware(a.created_at) > cutoff
         ]
 
         # Count by status
@@ -239,10 +267,12 @@ class AnalyticsService:
         Returns:
             Dictionary with routing stats
         """
+        if not self.task_manager:
+            return {'strategy_usage': {}, 'top_transitions': {}, 'total_transitions': 0}
         all_tasks = self.task_manager.list_tasks(limit=1000)
 
         # Filter by time window
-        cutoff = datetime.now() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         recent_tasks = [
             t for t in all_tasks
             if _get(t, 'created_at') and _get(t, 'created_at') > cutoff
@@ -301,10 +331,15 @@ class AnalyticsService:
         Returns:
             Dictionary with performance metrics
         """
+        if not self.task_manager:
+            return {
+                'average_completion_time': 0.0, 'min_completion_time': 0.0,
+                'max_completion_time': 0.0, 'total_completed': 0,
+            }
         all_tasks = self.task_manager.list_tasks(limit=1000)
 
         # Filter by time window
-        cutoff = datetime.now() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         recent_tasks = [
             t for t in all_tasks
             if _get(t, 'created_at') and _get(t, 'created_at') > cutoff
@@ -342,7 +377,7 @@ class AnalyticsService:
         """
         return {
             'time_window_days': days,
-            'generated_at': datetime.now().isoformat(),
+            'generated_at': datetime.now(timezone.utc).isoformat(),
             'tasks': self.get_task_statistics(days),
             'agents': self.get_agent_statistics(days),
             'approvals': self.get_approval_statistics(days),

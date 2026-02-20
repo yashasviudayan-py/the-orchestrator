@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - The Orchestrator</title>
+    <script>(function(){ document.documentElement.setAttribute('data-theme', localStorage.getItem('orchestrator-theme')||'dark'); })();</script>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container navbar-content">
+            <a href="/" class="navbar-brand">The Orchestrator</a>
+            <ul class="navbar-nav">
+                <li><a href="/" class="nav-link">Dashboard</a></li>
+                <li><a href="/approvals" class="nav-link">Approvals</a></li>
+                <li><a href="/history" class="nav-link">History</a></li>
+                <li><a href="/analytics" class="nav-link">Analytics</a></li>
+                <li><a href="/health" class="nav-link active">Health</a></li>
+                <li><a href="/settings" class="nav-link">Settings</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <main class="main">
+        <div class="container">
+            <h1 class="section-title">System Health</h1>
+            <p class="section-subtitle">Monitor all services and agents in real-time</p>
+
+            <!-- Overall Status Banner -->
+            <div class="health-banner" id="health-banner">
+                <div class="health-banner-indicator unknown" id="overall-indicator"></div>
+                <div>
+                    <div style="font-weight: 600; color: var(--text-primary);" id="overall-status-text">Checking…</div>
+                    <div class="text-dim" style="font-size: 12px;" id="last-health-check">—</div>
+                </div>
+            </div>
+
+            <!-- Service Cards -->
+            <div class="health-services-grid">
+
+                <!-- Research Agent -->
+                <div class="health-service-card">
+                    <div class="health-service-header">
+                        <div class="agent-indicator unknown" data-indicator="research"></div>
+                        <div class="health-service-name">🔬 Research Agent</div>
+                    </div>
+                    <div class="health-service-status" id="status-research">Unknown</div>
+                    <div class="health-service-note text-dim">External project — cannot be started here</div>
+                </div>
+
+                <!-- Context Core -->
+                <div class="health-service-card">
+                    <div class="health-service-header">
+                        <div class="agent-indicator unknown" data-indicator="context"></div>
+                        <div class="health-service-name">🧠 Context Core</div>
+                    </div>
+                    <div class="health-service-status" id="status-context">Unknown</div>
+                    <div class="health-service-note text-dim">External project — cannot be started here</div>
+                </div>
+
+                <!-- PR-Agent -->
+                <div class="health-service-card">
+                    <div class="health-service-header">
+                        <div class="agent-indicator unknown" data-indicator="pr"></div>
+                        <div class="health-service-name">⚙️ PR-Agent</div>
+                    </div>
+                    <div class="health-service-status" id="status-pr">Unknown</div>
+                    <div class="health-service-note text-dim">External project — cannot be started here</div>
+                </div>
+
+                <!-- Ollama -->
+                <div class="health-service-card">
+                    <div class="health-service-header">
+                        <div class="agent-indicator unknown" data-indicator="ollama"></div>
+                        <div class="health-service-name">🦙 Ollama LLM</div>
+                    </div>
+                    <div class="health-service-status" id="status-ollama">Unknown</div>
+                    <div class="health-service-actions">
+                        <button class="btn btn-success" onclick="toggleService('ollama','start')" id="btn-ollama-start">Start</button>
+                        <button class="btn btn-danger" onclick="toggleService('ollama','stop')" id="btn-ollama-stop">Stop</button>
+                        <span class="spinner hidden" id="spinner-ollama"></span>
+                    </div>
+                    <div class="health-action-msg text-dim" id="msg-ollama"></div>
+                </div>
+
+                <!-- Redis -->
+                <div class="health-service-card">
+                    <div class="health-service-header">
+                        <div class="agent-indicator unknown" data-indicator="redis"></div>
+                        <div class="health-service-name">🗄 Redis</div>
+                    </div>
+                    <div class="health-service-status" id="status-redis">Unknown</div>
+                    <div class="health-service-actions">
+                        <button class="btn btn-success" onclick="toggleService('redis','start')" id="btn-redis-start">Start</button>
+                        <button class="btn btn-danger" onclick="toggleService('redis','stop')" id="btn-redis-stop">Stop</button>
+                        <span class="spinner hidden" id="spinner-redis"></span>
+                    </div>
+                    <div class="health-action-msg text-dim" id="msg-redis"></div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <footer style="padding: 32px 0; text-align: center; color: var(--text-dim); font-size: 13px;">
+        <div class="container">
+            The Orchestrator • 100% Local • No Cloud APIs • Full Privacy
+        </div>
+    </footer>
+
+    <script src="/static/js/health.js"></script>
+</body>
+</html>

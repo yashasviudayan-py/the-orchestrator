@@ -125,7 +125,7 @@ function renderTaskStats(stats) {
     if (!stats) return;
 
     setText(elements.totalTasks, stats.total_tasks);
-    setText(elements.successRate, `${stats.success_rate}%`);
+    setText(elements.successRate, stats.success_rate != null ? `${stats.success_rate}%` : null);
     setText(elements.avgIterations, stats.average_iterations);
     setText(elements.tasksCompleted, stats.completed);
     setText(elements.tasksFailed, stats.failed);
@@ -140,19 +140,19 @@ function renderAgentStats(stats) {
     // Research agent
     if (stats.research) {
         setText(elements.researchCalls, stats.research.total_calls);
-        setText(elements.researchSuccess, `${stats.research.success_rate}%`);
+        setText(elements.researchSuccess, stats.research.success_rate != null ? `${stats.research.success_rate}%` : null);
     }
 
     // Context agent
     if (stats.context) {
         setText(elements.contextCalls, stats.context.total_calls);
-        setText(elements.contextSuccess, `${stats.context.success_rate}%`);
+        setText(elements.contextSuccess, stats.context.success_rate != null ? `${stats.context.success_rate}%` : null);
     }
 
     // PR agent
     if (stats.pr) {
         setText(elements.prCalls, stats.pr.total_calls);
-        setText(elements.prSuccess, `${stats.pr.success_rate}%`);
+        setText(elements.prSuccess, stats.pr.success_rate != null ? `${stats.pr.success_rate}%` : null);
     }
 }
 
@@ -163,7 +163,7 @@ function renderApprovalStats(stats) {
     if (!stats) return;
 
     setText(elements.totalApprovals, stats.total_requests);
-    setText(elements.approvalRate, `${stats.approval_rate}%`);
+    setText(elements.approvalRate, stats.approval_rate != null ? `${stats.approval_rate}%` : null);
     setText(elements.avgResponseTime, formatDuration(stats.average_response_time));
     setText(elements.approvalsApproved, stats.approved);
     setText(elements.approvalsRejected, stats.rejected);
@@ -239,7 +239,8 @@ function setText(element, value) {
  * Format duration in seconds to human readable
  */
 function formatDuration(seconds) {
-    if (!seconds || seconds === 0) return '0s';
+    if (seconds == null) return '—';
+    if (seconds === 0) return '0s';
 
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);

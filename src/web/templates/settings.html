@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - The Orchestrator</title>
+    <script>(function(){ document.documentElement.setAttribute('data-theme', localStorage.getItem('orchestrator-theme')||'dark'); })();</script>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container navbar-content">
+            <a href="/" class="navbar-brand">The Orchestrator</a>
+            <ul class="navbar-nav">
+                <li><a href="/" class="nav-link">Dashboard</a></li>
+                <li><a href="/approvals" class="nav-link">Approvals</a></li>
+                <li><a href="/history" class="nav-link">History</a></li>
+                <li><a href="/analytics" class="nav-link">Analytics</a></li>
+                <li><a href="/health" class="nav-link">Health</a></li>
+                <li><a href="/settings" class="nav-link active">Settings</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <main class="main">
+        <div class="container">
+            <h1 class="section-title">Settings</h1>
+            <p class="section-subtitle">Configure your Orchestrator experience</p>
+
+            <!-- Theme -->
+            <div class="card mb-3">
+                <div class="card-title">Appearance</div>
+                <div class="card-content">
+                    <div class="settings-row">
+                        <div>
+                            <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">Theme</div>
+                            <div class="text-dim" style="font-size: 13px;">Choose between dark and light mode</div>
+                        </div>
+                        <button id="theme-toggle-btn" class="theme-toggle-btn" onclick="toggleTheme()">
+                            <span id="theme-icon">🌙</span>
+                            <span id="theme-label">Dark Mode</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Info -->
+            <div class="card">
+                <div class="card-title">System Configuration</div>
+                <div class="card-content">
+                    <div class="settings-info-grid">
+                        <div class="settings-info-item">
+                            <div class="text-dim" style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">LLM Model</div>
+                            <div style="font-weight: 600; color: var(--text-primary);" id="ollama-model">—</div>
+                        </div>
+                        <div class="settings-info-item">
+                            <div class="text-dim" style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Ollama URL</div>
+                            <div style="font-weight: 600; color: var(--text-primary);" id="ollama-url">—</div>
+                        </div>
+                        <div class="settings-info-item">
+                            <div class="text-dim" style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Redis Host</div>
+                            <div style="font-weight: 600; color: var(--text-primary);" id="redis-host">—</div>
+                        </div>
+                        <div class="settings-info-item">
+                            <div class="text-dim" style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Redis Port</div>
+                            <div style="font-weight: 600; color: var(--text-primary);" id="redis-port">—</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer style="padding: 32px 0; text-align: center; color: var(--text-dim); font-size: 13px;">
+        <div class="container">
+            The Orchestrator • 100% Local • No Cloud APIs • Full Privacy
+        </div>
+    </footer>
+
+    <script src="/static/js/settings.js"></script>
+</body>
+</html>

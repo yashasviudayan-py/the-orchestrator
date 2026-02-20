@@ -4,9 +4,21 @@
  * Handles:
  * - Task submission
  * - SSE streaming for real-time progress
- * - Agent status monitoring
+ * - Chat-style agent activity feed
  * - UI updates
  */
+
+// ═══════════════════════════════════════════════════════════════════════
+// Agent Configuration
+// ═══════════════════════════════════════════════════════════════════════
+
+const AGENT_CONFIG = {
+    research:   { icon: '🔬', label: 'Research Agent' },
+    context:    { icon: '🧠', label: 'Context Core' },
+    pr:         { icon: '⚙️',  label: 'PR-Agent' },
+    supervisor: { icon: '🎯', label: 'Supervisor' },
+    system:     { icon: '🖥️', label: 'System' },
+};
 
 // ═══════════════════════════════════════════════════════════════════════
 // State Management
@@ -15,7 +27,7 @@
 const state = {
     currentTaskId: null,
     eventSource: null,
-    agents: {},
+    taskCount: 0,  // number of tasks started this session
 };
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -26,13 +38,13 @@ const elements = {
     taskInput: document.getElementById('task-input'),
     submitBtn: document.getElementById('submit-btn'),
     stopBtn: document.getElementById('stop-btn'),
-    taskProgress: document.getElementById('task-progress'),
+    taskStatusBar: document.getElementById('task-status-bar'),
     taskStatus: document.getElementById('task-status'),
     progressBar: document.getElementById('progress-bar'),
     currentAgent: document.getElementById('current-agent'),
     iteration: document.getElementById('iteration'),
-    eventsTimeline: document.getElementById('events-timeline'),
-    agentGrid: document.getElementById('agent-grid'),
+    chatMessages: document.getElementById('chat-messages'),
+    typingIndicator: document.getElementById('typing-indicator'),
 };
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -40,9 +52,6 @@ const elements = {
 // ═══════════════════════════════════════════════════════════════════════
 
 const api = {
-    /**
-     * Start a new orchestration task
-     */
     async startTask(objective) {
         const response = await fetch('/api/tasks', {
             method: 'POST',
@@ -63,26 +72,8 @@ const api = {
         return await response.json();
     },
 
-    /**
-     * Get task details
-     */
-    async getTask(taskId) {
-        const response = await fetch(`/api/tasks/${taskId}`);
-
-        if (!response.ok) {
-            throw new Error('Failed to get task');
-        }
-
-        return await response.json();
-    },
-
-    /**
-     * Cancel a running task
-     */
     async cancelTask(taskId) {
-        const response = await fetch(`/api/tasks/${taskId}`, {
-            method: 'DELETE',
-        });
+        const response = await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
 
         if (!response.ok) {
             throw new Error('Failed to cancel task');
@@ -90,25 +81,115 @@ const api = {
 
         return await response.json();
     },
-
-    /**
-     * Check agent health
-     */
-    async checkHealth() {
-        const response = await fetch('/api/health');
-        return await response.json();
-    },
 };
+
+// ═══════════════════════════════════════════════════════════════════════
+// Chat UI
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Remove the "empty" placeholder if present
+ */
+function clearEmptyPlaceholder() {
+    const empty = elements.chatMessages.querySelector('.chat-empty');
+    if (empty) empty.remove();
+}
+
+/**
+ * Add a task separator when a new task starts
+ */
+function addTaskSeparator(taskNumber) {
+    clearEmptyPlaceholder();
+    const sep = document.createElement('div');
+    sep.className = 'chat-separator';
+    sep.textContent = `— Task #${taskNumber} —`;
+    elements.chatMessages.appendChild(sep);
+    sep.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+
+/**
+ * Add a chat bubble message
+ */
+function addChatMessage(message, agent = 'system', type = 'info') {
+    clearEmptyPlaceholder();
+
+    const cfg = AGENT_CONFIG[agent] || { icon: '●', label: agent };
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    const bubble = document.createElement('div');
+    bubble.className = `chat-bubble chat-bubble-${agent}`;
+
+    const colorClass = type === 'success' ? 'style="color: var(--success);"'
+        : type === 'error' ? 'style="color: var(--error);"'
+        : type === 'warning' ? 'style="color: var(--warning);"'
+        : '';
+
+    bubble.innerHTML = `
+        <div class="chat-bubble-header">
+            <span>${cfg.icon}</span>
+            <span class="chat-agent-name">${cfg.label}</span>
+            <span class="chat-time">${time}</span>
+        </div>
+        <div class="chat-bubble-content" ${colorClass}>${message}</div>
+    `;
+
+    elements.chatMessages.appendChild(bubble);
+    bubble.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+
+/**
+ * Show/hide typing indicator
+ */
+function setTypingIndicator(visible) {
+    if (elements.typingIndicator) {
+        if (visible) {
+            elements.typingIndicator.classList.remove('hidden');
+        } else {
+            elements.typingIndicator.classList.add('hidden');
+        }
+    }
+}
+
+/**
+ * Show final output as a chat bubble
+ */
+function showFinalOutput(output) {
+    addChatMessage(`<strong>Final Output:</strong><br><pre style="margin-top:6px;white-space:pre-wrap;font-size:13px;">${output}</pre>`, 'system', 'success');
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Status Bar Updates
+// ═══════════════════════════════════════════════════════════════════════
+
+function updateTaskStatus(status) {
+    if (!elements.taskStatus) return;
+    elements.taskStatus.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+    elements.taskStatus.className = `task-status ${status}`;
+}
+
+function updateProgress(percent) {
+    if (elements.progressBar) {
+        elements.progressBar.style.width = `${percent}%`;
+    }
+}
+
+function updateCurrentAgent(agent) {
+    if (elements.currentAgent) {
+        elements.currentAgent.textContent = agent || '—';
+    }
+}
+
+function updateIteration(current, max = 10) {
+    if (elements.iteration) {
+        elements.iteration.textContent = `${current} / ${max}`;
+    }
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // SSE Event Handling
 // ═══════════════════════════════════════════════════════════════════════
 
-/**
- * Connect to SSE stream for task progress
- */
 function connectToTaskStream(taskId, streamUrl) {
-    // Close existing connection
     if (state.eventSource) {
         state.eventSource.close();
     }
@@ -117,114 +198,103 @@ function connectToTaskStream(taskId, streamUrl) {
     state.eventSource = eventSource;
     state.currentTaskId = taskId;
 
-    // Task start
     eventSource.addEventListener('task_start', (e) => {
         const data = JSON.parse(e.data);
         console.log('Task started:', data);
-        addEvent('Task started', 'system');
+        addChatMessage('Task started', 'system');
+        setTypingIndicator(true);
 
-        // Update button to show working state and show stop button
         elements.submitBtn.innerHTML = '<span class="spinner"></span> Working...';
         elements.stopBtn.classList.remove('hidden');
     });
 
-    // Agent start
     eventSource.addEventListener('agent_start', (e) => {
         const data = JSON.parse(e.data);
         console.log('Agent starting:', data);
 
         updateCurrentAgent(data.agent);
         updateIteration(data.iteration);
-        addEvent(`Starting ${data.agent} agent`, data.agent);
+        setTypingIndicator(true);
+        addChatMessage(`Starting…`, data.agent || 'system');
     });
 
-    // Agent progress
     eventSource.addEventListener('agent_progress', (e) => {
         const data = JSON.parse(e.data);
         console.log('Agent progress:', data);
 
-        // Update current agent display
         if (data.current_agent) {
             updateCurrentAgent(data.current_agent);
-            state.currentAgent = data.current_agent;
         }
 
-        // Update iteration display
         if (typeof data.iteration === 'number') {
             updateIteration(data.iteration, 10);
         }
 
-        // Update progress bar if provided
         if (data.progress) {
             updateProgress(data.progress);
         }
 
-        // Add event to timeline
-        if (data.current_agent) {
-            addEvent(`${data.current_agent} agent working...`, data.current_agent);
+        if (data.message) {
+            addChatMessage(data.message, data.current_agent || 'system');
         }
     });
 
-    // Agent complete
     eventSource.addEventListener('agent_complete', (e) => {
         const data = JSON.parse(e.data);
         console.log('Agent completed:', data);
 
-        addEvent(`${data.agent} agent completed (${data.duration_ms}ms)`, data.agent, 'success');
+        setTypingIndicator(false);
+        addChatMessage(`Completed (${data.duration_ms}ms)`, data.agent || 'system', 'success');
     });
 
-    // Approval required
     eventSource.addEventListener('approval_required', (e) => {
         const data = JSON.parse(e.data);
         console.log('Approval required:', data);
 
-        addEvent('⚠️ Approval required - check Approvals page', 'system', 'warning');
+        setTypingIndicator(false);
+        addChatMessage('⚠️ Approval required — check the <a href="/approvals" style="color:var(--warning);">Approvals page</a>', 'system', 'warning');
 
-        // Could show toast notification here
-        showNotification('Approval Required', 'An operation needs your approval');
+        if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('Approval Required', { body: 'An operation needs your approval' });
+        }
     });
 
-    // Approval decided
     eventSource.addEventListener('approval_decided', (e) => {
         const data = JSON.parse(e.data);
         console.log('Approval decided:', data);
 
         const status = data.approved ? 'approved' : 'rejected';
-        addEvent(`Approval ${status}`, 'system', status === 'approved' ? 'success' : 'error');
+        addChatMessage(`Approval ${status}`, 'system', status === 'approved' ? 'success' : 'error');
     });
 
-    // Iteration
     eventSource.addEventListener('iteration', (e) => {
         const data = JSON.parse(e.data);
         console.log('Iteration:', data);
 
         updateIteration(data.iteration, data.max);
-        addEvent(`Iteration ${data.iteration}/${data.max}`, 'system');
+        addChatMessage(`Iteration ${data.iteration}/${data.max}`, 'supervisor');
     });
 
-    // Routing decision
     eventSource.addEventListener('routing_decision', (e) => {
         const data = JSON.parse(e.data);
         console.log('Routing decision:', data);
 
-        addEvent(`Routing to: ${data.next_agent}`, 'supervisor');
+        addChatMessage(`Routing to: ${data.next_agent}`, 'supervisor');
     });
 
-    // Complete
     eventSource.addEventListener('complete', (e) => {
         const data = JSON.parse(e.data);
         console.log('Task completed:', data);
 
+        setTypingIndicator(false);
         updateTaskStatus('completed');
         updateProgress(100);
-        addEvent('✓ Task completed successfully', 'system', 'success');
+        addChatMessage('✓ Task completed successfully', 'system', 'success');
 
-        // Show final output if available
         if (data.final_output) {
             showFinalOutput(data.final_output);
         }
 
-        // Reset buttons
         elements.submitBtn.disabled = false;
         elements.submitBtn.textContent = 'Start Task';
         elements.stopBtn.classList.add('hidden');
@@ -233,17 +303,16 @@ function connectToTaskStream(taskId, streamUrl) {
         state.eventSource = null;
     });
 
-    // Error
     eventSource.addEventListener('error', (e) => {
         if (e.data) {
             const data = JSON.parse(e.data);
             console.error('Task error:', data);
 
+            setTypingIndicator(false);
             updateTaskStatus('failed');
-            addEvent(`✗ Error: ${data.error}`, 'system', 'error');
+            addChatMessage(`✗ Error: ${data.error}`, 'system', 'error');
         }
 
-        // Reset buttons
         elements.submitBtn.disabled = false;
         elements.submitBtn.textContent = 'Start Task';
         elements.stopBtn.classList.add('hidden');
@@ -252,20 +321,17 @@ function connectToTaskStream(taskId, streamUrl) {
         state.eventSource = null;
     });
 
-    // Keepalive
     eventSource.addEventListener('keepalive', () => {
         console.log('Keepalive ping');
     });
 
-    // Connection errors
     eventSource.onerror = (error) => {
         console.error('SSE connection error:', error);
 
-        // Retry logic could go here
         if (eventSource.readyState === EventSource.CLOSED) {
-            addEvent('Connection closed', 'system', 'error');
+            setTypingIndicator(false);
+            addChatMessage('Connection closed', 'system', 'error');
 
-            // Reset buttons on connection failure
             elements.submitBtn.disabled = false;
             elements.submitBtn.textContent = 'Start Task';
             elements.stopBtn.classList.add('hidden');
@@ -274,113 +340,9 @@ function connectToTaskStream(taskId, streamUrl) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// UI Updates
-// ═══════════════════════════════════════════════════════════════════════
-
-/**
- * Update task status display
- */
-function updateTaskStatus(status) {
-    const statusEl = elements.taskStatus;
-    statusEl.textContent = status.charAt(0).toUpperCase() + status.slice(1);
-    statusEl.className = `task-status ${status}`;
-}
-
-/**
- * Update progress bar
- */
-function updateProgress(percent) {
-    elements.progressBar.style.width = `${percent}%`;
-}
-
-/**
- * Update current agent display
- */
-function updateCurrentAgent(agent) {
-    elements.currentAgent.textContent = agent || 'None';
-}
-
-/**
- * Update iteration display
- */
-function updateIteration(current, max = 10) {
-    elements.iteration.textContent = `${current} / ${max}`;
-}
-
-/**
- * Add event to timeline
- */
-function addEvent(message, agent = 'system', type = 'info') {
-    const time = new Date().toLocaleTimeString();
-
-    const eventEl = document.createElement('div');
-    eventEl.className = 'event-item';
-
-    eventEl.innerHTML = `
-        <div class="event-time">${time}</div>
-        <div class="event-content">
-            <span class="event-agent">[${agent}]</span>
-            <span class="text-${type === 'success' ? 'success' : type === 'error' ? 'error' : 'secondary'}">${message}</span>
-        </div>
-    `;
-
-    elements.eventsTimeline.appendChild(eventEl);
-
-    // Auto-scroll to bottom
-    eventEl.scrollIntoView({ behavior: 'smooth', block: 'end' });
-}
-
-/**
- * Show final output
- */
-function showFinalOutput(output) {
-    const outputEl = document.createElement('div');
-    outputEl.className = 'card mt-3';
-    outputEl.innerHTML = `
-        <div class="card-title">Final Output</div>
-        <div class="card-content" style="white-space: pre-wrap; color: var(--text-primary);">${output}</div>
-    `;
-
-    elements.taskProgress.appendChild(outputEl);
-}
-
-/**
- * Show notification (basic implementation)
- */
-function showNotification(title, message) {
-    // Could use browser Notification API or toast library
-    console.log(`[Notification] ${title}: ${message}`);
-
-    // Basic browser notification if permission granted
-    if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification(title, {
-            body: message,
-            icon: '/static/icon.png',
-        });
-    }
-}
-
-/**
- * Update agent status indicators
- */
-function updateAgentStatuses(agents) {
-    const agentNames = ['research', 'context', 'pr', 'ollama', 'redis'];
-
-    agentNames.forEach(name => {
-        const indicator = document.querySelector(`[data-agent="${name}"] .agent-indicator`);
-        if (indicator && agents[name]) {
-            indicator.className = `agent-indicator ${agents[name]}`;
-        }
-    });
-}
-
-// ═══════════════════════════════════════════════════════════════════════
 // Event Listeners
 // ═══════════════════════════════════════════════════════════════════════
 
-/**
- * Handle task submission
- */
 elements.submitBtn.addEventListener('click', async () => {
     const objective = elements.taskInput.value.trim();
 
@@ -390,28 +352,23 @@ elements.submitBtn.addEventListener('click', async () => {
     }
 
     try {
-        // Disable input
         elements.submitBtn.disabled = true;
         elements.submitBtn.innerHTML = '<span class="spinner"></span> Starting...';
 
-        // Start task
         const response = await api.startTask(objective);
-
         console.log('Task created:', response);
 
-        // Show progress section
-        elements.taskProgress.classList.remove('hidden');
-
-        // Clear previous events
-        elements.eventsTimeline.innerHTML = '';
-
-        // Reset UI
+        // Show status bar
+        elements.taskStatusBar.classList.remove('hidden');
         updateTaskStatus('running');
         updateProgress(0);
         updateCurrentAgent(null);
         updateIteration(0);
 
-        // Connect to stream
+        // Add separator in chat for new task
+        state.taskCount += 1;
+        addTaskSeparator(state.taskCount);
+
         connectToTaskStream(response.task_id, response.stream_url);
 
     } catch (error) {
@@ -423,31 +380,23 @@ elements.submitBtn.addEventListener('click', async () => {
     }
 });
 
-/**
- * Handle task stop/cancellation
- */
 elements.stopBtn.addEventListener('click', async () => {
-    if (!state.currentTaskId) {
-        return;
-    }
+    if (!state.currentTaskId) return;
 
     const confirmed = confirm('Are you sure you want to stop this task?');
-    if (!confirmed) {
-        return;
-    }
+    if (!confirmed) return;
 
     try {
         await api.cancelTask(state.currentTaskId);
 
-        addEvent('Task cancelled by user', 'system', 'warning');
+        setTypingIndicator(false);
+        addChatMessage('Task cancelled by user', 'system', 'warning');
 
-        // Close event source
         if (state.eventSource) {
             state.eventSource.close();
             state.eventSource = null;
         }
 
-        // Reset UI
         updateTaskStatus('cancelled');
         elements.submitBtn.disabled = false;
         elements.submitBtn.textContent = 'Start Task';
@@ -459,9 +408,6 @@ elements.stopBtn.addEventListener('click', async () => {
     }
 });
 
-/**
- * Allow Enter to submit (with Shift+Enter for newline)
- */
 elements.taskInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -473,40 +419,16 @@ elements.taskInput.addEventListener('keydown', (e) => {
 // Initialization
 // ═══════════════════════════════════════════════════════════════════════
 
-/**
- * Initialize dashboard
- */
-async function init() {
+function init() {
     console.log('Initializing Command Center...');
 
-    // Request notification permission
     if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission();
     }
 
-    // Load agent health
-    try {
-        const health = await api.checkHealth();
-        updateAgentStatuses(health.agents);
-        console.log('Agent health:', health);
-    } catch (error) {
-        console.error('Failed to check health:', error);
-    }
-
-    // Periodic health check every 30 seconds
-    setInterval(async () => {
-        try {
-            const health = await api.checkHealth();
-            updateAgentStatuses(health.agents);
-        } catch (error) {
-            console.error('Health check failed:', error);
-        }
-    }, 30000);
-
     console.log('Command Center ready ✓');
 }
 
-// Start when DOM is ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
 } else {

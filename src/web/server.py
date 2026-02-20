@@ -37,6 +37,7 @@ from .models import (
 from .task_manager import get_task_manager
 from .health_monitor import get_health_monitor
 from .analytics import get_analytics_service
+from .process_manager import get_process_manager, ServiceNotControllableError
 from ..state.schemas import TaskStatus
 
 logger = logging.getLogger(__name__)
@@ -145,6 +146,20 @@ async def analytics_page():
     """Analytics dashboard page."""
     template = _jinja.get_template("analytics.html")
     return template.render(title="Analytics")
+
+
+@app.get("/health", response_class=HTMLResponse)
+async def health_page():
+    """Health monitoring page."""
+    template = _jinja.get_template("health.html")
+    return template.render(title="Health")
+
+
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_page():
+    """Settings page."""
+    template = _jinja.get_template("settings.html")
+    return template.render(title="Settings")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -472,6 +487,59 @@ async def get_performance_analytics(days: int = Query(7, ge=1, le=30)):
     """Get performance metrics."""
     analytics = get_analytics_service()
     return analytics.get_performance_metrics(days=days)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Config API
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.get("/api/config")
+async def get_config():
+    """Get system configuration (non-sensitive fields only)."""
+    s = get_cached_settings()
+    return {
+        "ollama_model": s.ollama_model,
+        "ollama_base_url": s.ollama_base_url,
+        "redis_host": s.redis_host,
+        "redis_port": s.redis_port,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Service Control API
+# ═══════════════════════════════════════════════════════════════════════
+
+_VALID_SERVICES = {"ollama", "redis", "research", "context", "pr"}
+
+
+@app.post("/api/services/{service}/start")
+async def start_service(service: str):
+    """Start a controllable service (ollama or redis)."""
+    if service not in _VALID_SERVICES:
+        raise HTTPException(404, f"Unknown service: {service}")
+    try:
+        success, msg = await get_process_manager().start_service(service)
+        return {"success": success, "service": service, "message": msg}
+    except ServiceNotControllableError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        logger.error(f"Failed to start {service}: {e}", exc_info=True)
+        raise HTTPException(500, f"Failed to start {service}: {str(e)}")
+
+
+@app.post("/api/services/{service}/stop")
+async def stop_service(service: str):
+    """Stop a controllable service (ollama or redis)."""
+    if service not in _VALID_SERVICES:
+        raise HTTPException(404, f"Unknown service: {service}")
+    try:
+        success, msg = await get_process_manager().stop_service(service)
+        return {"success": success, "service": service, "message": msg}
+    except ServiceNotControllableError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        logger.error(f"Failed to stop {service}: {e}", exc_info=True)
+        raise HTTPException(500, f"Failed to stop {service}: {str(e)}")
 
 
 # ═══════════════════════════════════════════════════════════════════════
