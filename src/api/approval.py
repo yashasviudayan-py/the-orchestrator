@@ -4,12 +4,12 @@ Approval system for Human-in-the-Loop (HITL) safety checks.
 Defines risk levels, approval requirements, and approval workflows.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional, Any
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 
 class RiskLevel(str, Enum):
@@ -57,8 +57,10 @@ class ApprovalStatus(str, Enum):
 class ApprovalRequest(BaseModel):
     """Request for human approval of an operation."""
 
+    model_config = ConfigDict()
+
     request_id: str = Field(default_factory=lambda: str(uuid4()))
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     # Operation details
     operation_type: OperationType
@@ -79,24 +81,24 @@ class ApprovalRequest(BaseModel):
     decided_at: Optional[datetime] = None
     decision_note: Optional[str] = None
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat(),
-        }
+    @field_serializer("created_at", "decided_at")
+    def serialize_datetimes(self, v: datetime | None) -> str | None:
+        return v.isoformat() if v is not None else None
 
 
 class ApprovalResponse(BaseModel):
     """Response to an approval request."""
 
+    model_config = ConfigDict()
+
     request_id: str
     approved: bool
     note: Optional[str] = None
-    decided_at: datetime = Field(default_factory=datetime.utcnow)
+    decided_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat(),
-        }
+    @field_serializer("decided_at")
+    def serialize_decided_at(self, v: datetime) -> str:
+        return v.isoformat()
 
 
 class RiskClassifier:

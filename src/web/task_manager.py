@@ -7,7 +7,7 @@ Manages background execution of orchestration tasks and progress tracking.
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Optional, List
 from collections import defaultdict
@@ -122,8 +122,8 @@ class TaskManager:
             max_iterations=request.max_iterations,
             routing_strategy=request.routing_strategy.value,
             hitl_enabled=request.enable_hitl,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
 
         # Create event queue for SSE
@@ -333,11 +333,11 @@ class TaskManager:
             if task_id in self.tasks:
                 self.tasks[task_id].iteration = iteration
 
-        info.updated_at = datetime.utcnow()
+        info.updated_at = datetime.now(timezone.utc)
 
         # Set completion time
         if status in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
-            info.completed_at = datetime.utcnow()
+            info.completed_at = datetime.now(timezone.utc)
             info.duration_ms = int(
                 (info.completed_at - info.created_at).total_seconds() * 1000
             )

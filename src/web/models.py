@@ -4,7 +4,7 @@ Data models for Command Center web interface.
 Defines request/response models for the unified web API.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from enum import Enum
 
@@ -54,8 +54,8 @@ class TaskInfo(BaseModel):
     max_iterations: int = 10
     routing_strategy: str = "adaptive"
     hitl_enabled: bool = True
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: Optional[datetime] = None
     duration_ms: Optional[int] = None
 
@@ -130,7 +130,7 @@ class ProgressEvent(BaseModel):
 
     event: ProgressEventType
     data: Dict[str, Any]
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     event_id: int = 0  # Sequential ID for Last-Event-ID replay tracking
 
 
@@ -237,7 +237,7 @@ class WSMessage(BaseModel):
 
     type: WSMessageType
     data: Dict[str, Any]
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -248,7 +248,7 @@ class HealthResponse(BaseModel):
     """Overall system health."""
 
     status: str  # "healthy", "degraded", "down"
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     agents: Dict[str, AgentStatus]
     details: Dict[str, Any] = Field(default_factory=dict)
 

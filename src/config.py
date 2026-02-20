@@ -9,7 +9,7 @@ from typing import Optional
 
 import yaml
 from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class RedisConfig(BaseModel):
@@ -87,10 +87,11 @@ class Settings(BaseSettings):
     github_token: Optional[str] = Field(default=None, alias="GITHUB_TOKEN")
     github_username: Optional[str] = Field(default=None, alias="GITHUB_USERNAME")
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
 
 
 def load_config(config_path: Optional[Path] = None) -> dict:

@@ -3,12 +3,12 @@ State schemas for the orchestrator using Pydantic.
 Defines all data models for task state and agent communication.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 
 class TaskStatus(str, Enum):
@@ -43,17 +43,18 @@ class MessageType(str, Enum):
 class AgentMessage(BaseModel):
     """Message exchanged between agents."""
 
+    model_config = ConfigDict()
+
     message_id: str = Field(default_factory=lambda: str(uuid4()))
     agent_name: AgentType
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     message_type: MessageType
     content: dict[str, Any]
     metadata: dict[str, Any] = Field(default_factory=dict)
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat(),
-        }
+    @field_serializer("timestamp")
+    def serialize_timestamp(self, v: datetime) -> str:
+        return v.isoformat()
 
 
 class ResearchResult(BaseModel):
@@ -96,10 +97,12 @@ class TaskState(BaseModel):
     This is persisted in Redis and passed through LangGraph.
     """
 
+    model_config = ConfigDict()
+
     # Task identification
     task_id: str = Field(default_factory=lambda: str(uuid4()))
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     # User input
     objective: str
@@ -166,66 +169,64 @@ class TaskState(BaseModel):
             metadata=metadata or {},
         )
         self.messages.append(message)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def add_error(self, error: str) -> None:
         """Add an error to the error list."""
         self.errors.append(error)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def increment_iteration(self) -> None:
         """Increment iteration counter and update timestamp."""
         self.iteration += 1
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def mark_agent_called(self, agent: AgentType) -> None:
         """Mark an agent as called."""
         if agent not in self.agents_called:
             self.agents_called.append(agent)
         self.current_agent = agent
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def request_approval(self, note: str | None = None) -> None:
         """Request human approval."""
         self.requires_approval = True
-        self.approval_requested_at = datetime.utcnow()
+        self.approval_requested_at = datetime.now(timezone.utc)
         self.approval_note = note
         self.status = TaskStatus.WAITING_APPROVAL
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def approve(self) -> None:
         """Approve the task."""
         self.approved = True
         self.requires_approval = False
         self.status = TaskStatus.RUNNING
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def reject(self) -> None:
         """Reject the task."""
         self.approved = False
         self.requires_approval = False
         self.status = TaskStatus.CANCELLED
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def complete(self, output: str) -> None:
         """Mark task as completed."""
         self.status = TaskStatus.COMPLETED
         self.final_output = output
-        self.completed_at = datetime.utcnow()
-        self.updated_at = datetime.utcnow()
+        self.completed_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
 
     def fail(self, error: str) -> None:
         """Mark task as failed."""
         self.status = TaskStatus.FAILED
         self.add_error(error)
-        self.completed_at = datetime.utcnow()
-        self.updated_at = datetime.utcnow()
+        self.completed_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat(),
-            UUID: lambda v: str(v),
-        }
+    @field_serializer("created_at", "updated_at", "approval_requested_at", "completed_at")
+    def serialize_datetimes(self, v: datetime | None) -> str | None:
+        return v.isoformat() if v is not None else None
 
 
 class TaskSummary(BaseModel):

@@ -6,7 +6,7 @@ Handles creation, tracking, and resolution of approval requests.
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List
 
 from .approval import (
@@ -130,13 +130,13 @@ class ApprovalManager:
                 request_id=request.request_id,
                 approved=(request.status == ApprovalStatus.APPROVED),
                 note=request.decision_note,
-                decided_at=request.decided_at or datetime.utcnow(),
+                decided_at=request.decided_at or datetime.now(timezone.utc),
             )
 
         except asyncio.TimeoutError:
             # Timeout - mark as timeout
             request.status = ApprovalStatus.TIMEOUT
-            request.decided_at = datetime.utcnow()
+            request.decided_at = datetime.now(timezone.utc)
 
             self.pending_requests.pop(request.request_id, None)
             self.history.append(request)
@@ -176,7 +176,7 @@ class ApprovalManager:
             return False
 
         request.status = ApprovalStatus.APPROVED
-        request.decided_at = datetime.utcnow()
+        request.decided_at = datetime.now(timezone.utc)
         request.decision_note = note
 
         # Signal waiting coroutine
@@ -209,7 +209,7 @@ class ApprovalManager:
             return False
 
         request.status = ApprovalStatus.REJECTED
-        request.decided_at = datetime.utcnow()
+        request.decided_at = datetime.now(timezone.utc)
         request.decision_note = note
 
         # Signal waiting coroutine
@@ -335,12 +335,12 @@ class ApprovalManager:
             logger.info(f"Cleared {count} approval history entries")
             return count
 
-        cutoff = datetime.utcnow() - timedelta(hours=older_than_hours)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
 
         original_count = len(self.history)
         self.history = [
             r for r in self.history
-            if (r.decided_at or datetime.utcnow()) > cutoff
+            if (r.decided_at or datetime.now(timezone.utc)) > cutoff
         ]
 
         cleared = original_count - len(self.history)

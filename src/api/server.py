@@ -8,7 +8,7 @@ import logging
 from typing import Optional, List
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -100,7 +100,7 @@ async def health_check():
 @app.post("/approvals", response_model=dict)
 async def create_approval_request(
     request: CreateApprovalRequest,
-    manager: ApprovalManager = None,
+    manager: ApprovalManager = Depends(get_approval_manager),
 ):
     """
     Create a new approval request.
@@ -114,9 +114,6 @@ async def create_approval_request(
     Returns:
         Approval response with decision
     """
-    if manager is None:
-        manager = get_manager()
-
     logger.info(
         f"Creating approval request: {request.operation_type} - {request.description}"
     )
@@ -144,16 +141,13 @@ async def create_approval_request(
 
 
 @app.get("/approvals/pending", response_model=List[dict])
-async def get_pending_requests(manager: ApprovalManager = None):
+async def get_pending_requests(manager: ApprovalManager = Depends(get_approval_manager)):
     """
     Get all pending approval requests.
 
     Returns:
         List of pending approval requests
     """
-    if manager is None:
-        manager = get_manager()
-
     pending = manager.get_pending_requests()
 
     return [
@@ -176,7 +170,7 @@ async def get_pending_requests(manager: ApprovalManager = None):
 @app.get("/approvals/{request_id}", response_model=dict)
 async def get_approval_request(
     request_id: str,
-    manager: ApprovalManager = None,
+    manager: ApprovalManager = Depends(get_approval_manager),
 ):
     """
     Get a specific approval request by ID.
@@ -187,9 +181,6 @@ async def get_approval_request(
     Returns:
         Approval request details
     """
-    if manager is None:
-        manager = get_manager()
-
     request = manager.get_request(request_id)
 
     if not request:
@@ -215,7 +206,7 @@ async def get_approval_request(
 async def approve_request(
     request_id: str,
     decision: Optional[ApprovalDecision] = None,
-    manager: ApprovalManager = None,
+    manager: ApprovalManager = Depends(get_approval_manager),
 ):
     """
     Approve a pending approval request.
@@ -227,9 +218,6 @@ async def approve_request(
     Returns:
         Success status
     """
-    if manager is None:
-        manager = get_manager()
-
     note = decision.note if decision else None
 
     success = await manager.approve(request_id, note)
@@ -254,7 +242,7 @@ async def approve_request(
 async def reject_request(
     request_id: str,
     decision: Optional[ApprovalDecision] = None,
-    manager: ApprovalManager = None,
+    manager: ApprovalManager = Depends(get_approval_manager),
 ):
     """
     Reject a pending approval request.
@@ -266,9 +254,6 @@ async def reject_request(
     Returns:
         Success status
     """
-    if manager is None:
-        manager = get_manager()
-
     note = decision.note if decision else None
 
     success = await manager.reject(request_id, note)
@@ -293,7 +278,7 @@ async def reject_request(
 async def get_approval_history(
     limit: Optional[int] = Query(None, ge=1, le=100),
     status: Optional[ApprovalStatus] = None,
-    manager: ApprovalManager = None,
+    manager: ApprovalManager = Depends(get_approval_manager),
 ):
     """
     Get approval history.
@@ -305,9 +290,6 @@ async def get_approval_history(
     Returns:
         List of historical approval requests
     """
-    if manager is None:
-        manager = get_manager()
-
     history = manager.get_history(limit=limit, status=status)
 
     return [
@@ -328,16 +310,13 @@ async def get_approval_history(
 
 
 @app.get("/approvals/stats", response_model=ApprovalStats)
-async def get_approval_stats(manager: ApprovalManager = None):
+async def get_approval_stats(manager: ApprovalManager = Depends(get_approval_manager)):
     """
     Get approval statistics.
 
     Returns:
         Statistics about approvals
     """
-    if manager is None:
-        manager = get_manager()
-
     stats = manager.get_stats()
 
     return ApprovalStats(**stats)
@@ -346,7 +325,7 @@ async def get_approval_stats(manager: ApprovalManager = None):
 @app.delete("/approvals/history", response_model=dict)
 async def clear_approval_history(
     older_than_hours: Optional[int] = Query(None, ge=1),
-    manager: ApprovalManager = None,
+    manager: ApprovalManager = Depends(get_approval_manager),
 ):
     """
     Clear approval history.
@@ -357,9 +336,6 @@ async def clear_approval_history(
     Returns:
         Number of requests cleared
     """
-    if manager is None:
-        manager = get_manager()
-
     cleared = manager.clear_history(older_than_hours=older_than_hours)
 
     logger.info(f"Cleared {cleared} approval history entries")

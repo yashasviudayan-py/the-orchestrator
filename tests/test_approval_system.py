@@ -6,7 +6,7 @@ Tests approval schemas, manager, and risk classification.
 
 import pytest
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from src.api.approval import (
     RiskLevel,
@@ -241,7 +241,7 @@ class TestApprovalManager:
                 risk_level=RiskLevel.MEDIUM,
                 description="Test",
                 status=ApprovalStatus.APPROVED,
-                decided_at=datetime.utcnow() - timedelta(hours=2),
+                decided_at=datetime.now(timezone.utc) - timedelta(hours=2),
             )
         ]
 
@@ -259,14 +259,14 @@ class TestApprovalManager:
                 risk_level=RiskLevel.MEDIUM,
                 description="Recent",
                 status=ApprovalStatus.APPROVED,
-                decided_at=datetime.utcnow(),
+                decided_at=datetime.now(timezone.utc),
             ),
             ApprovalRequest(
                 operation_type=OperationType.FILE_WRITE,
                 risk_level=RiskLevel.MEDIUM,
                 description="Old",
                 status=ApprovalStatus.APPROVED,
-                decided_at=datetime.utcnow() - timedelta(hours=25),
+                decided_at=datetime.now(timezone.utc) - timedelta(hours=25),
             ),
         ]
 

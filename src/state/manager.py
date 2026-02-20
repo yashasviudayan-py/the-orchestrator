@@ -313,9 +313,9 @@ class StateManager:
             Number of tasks deleted
         """
         try:
-            from datetime import datetime, timedelta
+            from datetime import datetime, timedelta, timezone
 
-            cutoff = datetime.utcnow() - timedelta(seconds=older_than_seconds)
+            cutoff = datetime.now(timezone.utc) - timedelta(seconds=older_than_seconds)
 
             tasks = await self.list_tasks()
             deleted_count = 0
