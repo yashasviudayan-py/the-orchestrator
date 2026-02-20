@@ -51,9 +51,48 @@ class OrchestratorNodes:
         self.pr_agent = pr_agent
         self.llm = llm
 
+    # ── Conversational patterns that need NO agents ──────────────────────
+    _CONVERSATIONAL = {
+        'hi', 'hey', 'hello', 'howdy', 'sup', 'yo', 'hiya',
+        'thanks', 'thank you', 'thx', 'ty', 'thank u',
+        'bye', 'goodbye', 'cya', 'see you', 'later',
+        'ok', 'okay', 'k', 'cool', 'got it', 'nice', 'great',
+        'awesome', 'perfect', 'sounds good', 'alright',
+        'lol', 'haha', 'hehe', ':)', '👍',
+        'good morning', 'good night', 'good evening', 'good afternoon',
+        'how are you', "how r u", "what's up", 'whats up',
+        'who are you', 'what are you', 'what can you do',
+    }
+    # Words that always mean a real task even in short messages
+    _TASK_WORDS = {
+        'fix', 'add', 'create', 'implement', 'build', 'write', 'debug',
+        'update', 'delete', 'remove', 'test', 'deploy', 'refactor',
+        'install', 'setup', 'configure', 'migrate', 'generate', 'push',
+        'commit', 'pr', 'pull', 'merge', 'branch', 'diff', 'review',
+        'research', 'find', 'search', 'analyze', 'analyse', 'explain',
+        'show', 'list', 'get', 'fetch', 'run', 'execute', 'start',
+    }
+
+    def _is_conversational(self, text: str) -> bool:
+        """Return True if the message is conversational and needs no agents."""
+        t = text.strip().lower().rstrip('!?.,')
+        # Exact match
+        if t in self._CONVERSATIONAL:
+            return True
+        # Starts-with match (e.g. "hi there", "hey how are you")
+        for p in self._CONVERSATIONAL:
+            if t == p or t.startswith(p + ' '):
+                return True
+        # Very short (≤3 words) and no task keywords
+        words = t.split()
+        if len(words) <= 3 and not any(w in self._TASK_WORDS for w in words):
+            return True
+        return False
+
     async def parse_objective(self, state: dict) -> dict:
         """
         Parse user objective and determine initial routing strategy.
+        Conversational messages are answered directly without agents.
 
         Args:
             state: Current task state
@@ -62,45 +101,80 @@ class OrchestratorNodes:
             Updated state with routing decision
         """
         task_state = TaskState(**state)
+        objective = task_state.objective
 
-        logger.info(f"Parsing objective: {task_state.objective}")
+        logger.info(f"Parsing objective: {objective}")
 
+        task_state.status = TaskStatus.RUNNING
+
+        # ── Phase 1: Direct conversational reply (no agents needed) ──────
+        if self._is_conversational(objective):
+            logger.info("Conversational message detected — skipping agents")
+            try:
+                prompt = (
+                    "You are The Orchestrator, a friendly AI project manager. "
+                    "Reply naturally and concisely to this message "
+                    f"(1-3 sentences max): {objective}"
+                )
+                resp = await self.llm.ainvoke(prompt)
+                task_state.final_output = resp.content.strip()
+            except Exception as e:
+                logger.warning(f"Direct reply failed: {e}")
+                task_state.final_output = "Hello! How can I help you today?"
+
+            task_state.next_agent = None   # → finalize directly
+            return task_state.model_dump()
+
+        # ── Phase 2: Task routing — decide which agent to call first ─────
         try:
-            # Use LLM to analyze objective
-            prompt = f"""Analyze this task objective and determine which agents to call:
+            prompt = f"""You are a routing assistant. Decide the FIRST agent to call for this task.
 
-Objective: {task_state.objective}
+Task: {objective}
 
-Available agents:
-- research: Find best practices and implementation patterns
-- context: Check if user has done this before or has relevant context
-- pr: Write code and create pull request
+Agents:
+- research: find best practices, new technology, external knowledge
+- context: check existing codebase, prior work, project history
+- pr: write/edit code, create pull requests
 
-Respond with ONLY the first agent name to call: research, context, or pr
+Rules:
+- Greetings or simple questions that need no code → NONE
+- Questions about this specific project/codebase → context
+- Questions requiring external knowledge/research → research
+- Code changes, bug fixes, new features → pr or research first
+
+Respond with ONLY one word: research, context, pr, or NONE
 """
-
             response = await self.llm.ainvoke(prompt)
-            next_agent = response.content.strip().lower()
+            next_agent = response.content.strip().lower().split()[0]  # take first word only
 
-            # Validate response
-            if next_agent not in ["research", "context", "pr"]:
-                # Default to research for new features
-                next_agent = "research"
-
-            task_state.next_agent = AgentType(next_agent)
-            task_state.status = TaskStatus.RUNNING
-            task_state.add_message(
-                AgentType.CONTEXT,
-                MessageType.INFO,
-                {"action": "parsed_objective", "next_agent": next_agent},
-            )
-
-            logger.info(f"Routing to: {next_agent}")
+            if next_agent == "none":
+                # LLM says no agents needed — generate direct reply
+                try:
+                    direct_prompt = (
+                        "You are The Orchestrator, an AI project manager. "
+                        f"Answer this directly and concisely: {objective}"
+                    )
+                    resp = await self.llm.ainvoke(direct_prompt)
+                    task_state.final_output = resp.content.strip()
+                except Exception:
+                    task_state.final_output = f"Here is my response to: {objective}"
+                task_state.next_agent = None
+            elif next_agent in ("research", "context", "pr"):
+                task_state.next_agent = AgentType(next_agent)
+                task_state.add_message(
+                    AgentType.CONTEXT,
+                    MessageType.INFO,
+                    {"action": "parsed_objective", "next_agent": next_agent},
+                )
+                logger.info(f"Routing to: {next_agent}")
+            else:
+                # Unknown response → default to research
+                task_state.next_agent = AgentType.RESEARCH
+                logger.warning(f"Unexpected routing response '{next_agent}' — defaulting to research")
 
         except Exception as e:
             logger.error(f"Failed to parse objective: {e}")
             task_state.add_error(f"Objective parsing failed: {str(e)}")
-            # Default to research
             task_state.next_agent = AgentType.RESEARCH
 
         return task_state.model_dump()
@@ -409,7 +483,12 @@ Respond with ONLY: research, context, pr, or DONE
         logger.info("Finalizing task")
 
         try:
-            # Build final output
+            # Short-circuit: direct reply was already generated (conversational / NONE route)
+            if task_state.final_output:
+                task_state.complete(task_state.final_output)
+                return task_state.model_dump()
+
+            # Build final output from agent results
             output_parts = []
 
             output_parts.append(f"# Task Completed: {task_state.objective}\n")

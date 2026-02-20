@@ -100,6 +100,7 @@ class OrchestratorGraph:
                 "call_research": "call_research",
                 "call_context": "call_context",
                 "call_pr": "call_pr",
+                "finalize": "finalize",   # conversational / direct reply
             },
         )
 

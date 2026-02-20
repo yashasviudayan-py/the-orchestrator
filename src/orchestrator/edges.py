@@ -11,9 +11,10 @@ from ..state.schemas import TaskState, AgentType
 logger = logging.getLogger(__name__)
 
 
-def route_after_parse(state: dict) -> Literal["call_research", "call_context", "call_pr"]:
+def route_after_parse(state: dict) -> Literal["call_research", "call_context", "call_pr", "finalize"]:
     """
     Route after parsing objective.
+    Returns 'finalize' when the message was answered directly (no agents needed).
 
     Args:
         state: Current task state
@@ -23,6 +24,10 @@ def route_after_parse(state: dict) -> Literal["call_research", "call_context", "
     """
     task_state = TaskState(**state)
 
+    # Conversational / direct reply — skip all agents
+    if task_state.next_agent is None:
+        return "finalize"
+
     if task_state.next_agent == AgentType.RESEARCH:
         return "call_research"
     elif task_state.next_agent == AgentType.CONTEXT:
@@ -30,7 +35,6 @@ def route_after_parse(state: dict) -> Literal["call_research", "call_context", "
     elif task_state.next_agent == AgentType.PR:
         return "call_pr"
     else:
-        # Default to research
         return "call_research"
 
 

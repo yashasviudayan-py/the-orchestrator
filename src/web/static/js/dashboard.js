@@ -1,432 +1,494 @@
 /**
- * The Orchestrator Command Center - Dashboard JavaScript
+ * The Orchestrator — ChatGPT-style Dashboard
  *
- * Handles:
- * - Task submission
- * - SSE streaming for real-time progress
- * - Chat-style agent activity feed
- * - UI updates
+ * - Sidebar: session history from /api/tasks
+ * - User messages: right-aligned bubbles
+ * - Agent activity: left-aligned bubbles with icons
+ * - Final output: rendered as markdown, white text (no green)
+ * - Input: fixed at bottom
  */
 
 // ═══════════════════════════════════════════════════════════════════════
-// Agent Configuration
+// Agent Config
 // ═══════════════════════════════════════════════════════════════════════
 
 const AGENT_CONFIG = {
-    research:   { icon: '🔬', label: 'Research Agent' },
-    context:    { icon: '🧠', label: 'Context Core' },
-    pr:         { icon: '⚙️',  label: 'PR-Agent' },
-    supervisor: { icon: '🎯', label: 'Supervisor' },
-    system:     { icon: '🖥️', label: 'System' },
+    research:   { icon: '🔬', label: 'Research Agent', cls: 'chat-bubble-research' },
+    context:    { icon: '🧠', label: 'Context Core',   cls: 'chat-bubble-context' },
+    pr:         { icon: '⚙️',  label: 'PR-Agent',       cls: 'chat-bubble-pr' },
+    supervisor: { icon: '🎯', label: 'Supervisor',     cls: 'chat-bubble-supervisor' },
+    system:     { icon: '🖥️', label: 'System',         cls: 'chat-bubble-system' },
+    user:       { icon: '👤', label: 'You',            cls: 'chat-bubble-user' },
 };
 
 // ═══════════════════════════════════════════════════════════════════════
-// State Management
+// State
 // ═══════════════════════════════════════════════════════════════════════
 
 const state = {
     currentTaskId: null,
     eventSource: null,
-    taskCount: 0,  // number of tasks started this session
+    activeSessionId: null,   // task_id of most recent task
+    isViewingHistory: false, // true when user clicked a past session from sidebar
 };
 
 // ═══════════════════════════════════════════════════════════════════════
-// DOM Elements
+// DOM
 // ═══════════════════════════════════════════════════════════════════════
 
-const elements = {
-    taskInput: document.getElementById('task-input'),
-    submitBtn: document.getElementById('submit-btn'),
-    stopBtn: document.getElementById('stop-btn'),
-    taskStatusBar: document.getElementById('task-status-bar'),
-    taskStatus: document.getElementById('task-status'),
-    progressBar: document.getElementById('progress-bar'),
-    currentAgent: document.getElementById('current-agent'),
-    iteration: document.getElementById('iteration'),
+const el = {
+    taskInput:    document.getElementById('task-input'),
+    submitBtn:    document.getElementById('submit-btn'),
+    stopBtn:      document.getElementById('stop-btn'),
     chatMessages: document.getElementById('chat-messages'),
-    typingIndicator: document.getElementById('typing-indicator'),
+    chatEmpty:    document.getElementById('chat-empty'),
+    sessionsList: document.getElementById('sessions-list'),
+    sessionTitle: document.getElementById('session-title'),
+    statusPills:  document.getElementById('status-pills'),
+    headerStatus: document.getElementById('header-status'),
+    headerAgent:  document.getElementById('header-agent'),
+    headerIter:   document.getElementById('header-iter'),
+    headerTyping: document.getElementById('header-typing'),
+    newChatBtn:   document.getElementById('new-chat-btn'),
 };
 
 // ═══════════════════════════════════════════════════════════════════════
-// API Client
+// API
 // ═══════════════════════════════════════════════════════════════════════
 
 const api = {
     async startTask(objective) {
-        const response = await fetch('/api/tasks', {
+        const r = await fetch('/api/tasks', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                objective,
-                max_iterations: 10,
-                routing_strategy: 'adaptive',
-                enable_hitl: true,
-            }),
+            body: JSON.stringify({ objective, max_iterations: 10, routing_strategy: 'adaptive', enable_hitl: true }),
         });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Failed to start task');
-        }
-
-        return await response.json();
+        if (!r.ok) { const e = await r.json(); throw new Error(e.detail || 'Failed'); }
+        return r.json();
     },
 
-    async cancelTask(taskId) {
-        const response = await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
+    async getTask(id) {
+        const r = await fetch(`/api/tasks/${id}`);
+        if (!r.ok) throw new Error('Not found');
+        return r.json();
+    },
 
-        if (!response.ok) {
-            throw new Error('Failed to cancel task');
-        }
+    async cancelTask(id) {
+        const r = await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
+        if (!r.ok) throw new Error('Failed to cancel');
+        return r.json();
+    },
 
-        return await response.json();
+    async listTasks(limit = 30) {
+        const r = await fetch(`/api/tasks?limit=${limit}`);
+        if (!r.ok) return { tasks: [] };
+        return r.json();
     },
 };
 
 // ═══════════════════════════════════════════════════════════════════════
-// Chat UI
+// Markdown renderer (minimal)
 // ═══════════════════════════════════════════════════════════════════════
 
-/**
- * Remove the "empty" placeholder if present
- */
-function clearEmptyPlaceholder() {
-    const empty = elements.chatMessages.querySelector('.chat-empty');
-    if (empty) empty.remove();
+function renderMarkdown(text) {
+    if (!text) return '';
+    return text
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+        .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/`([^`]+)`/g, '<code style="background:var(--bg-card);padding:1px 5px;border-radius:4px;font-size:13px;">$1</code>')
+        .replace(/^- (.+)$/gm, '<li>$1</li>')
+        .replace(/(<li>.*<\/li>\n?)+/g, m => `<ul style="padding-left:18px;margin:6px 0;">${m}</ul>`)
+        .replace(/\n{2,}/g, '<br><br>')
+        .replace(/\n/g, '<br>');
 }
 
-/**
- * Add a task separator when a new task starts
- */
-function addTaskSeparator(taskNumber) {
-    clearEmptyPlaceholder();
-    const sep = document.createElement('div');
-    sep.className = 'chat-separator';
-    sep.textContent = `— Task #${taskNumber} —`;
-    elements.chatMessages.appendChild(sep);
-    sep.scrollIntoView({ behavior: 'smooth', block: 'end' });
+// ═══════════════════════════════════════════════════════════════════════
+// Chat rendering helpers
+// ═══════════════════════════════════════════════════════════════════════
+
+function hideEmpty() {
+    if (el.chatEmpty) { el.chatEmpty.style.display = 'none'; }
 }
 
-/**
- * Add a chat bubble message
- */
-function addChatMessage(message, agent = 'system', type = 'info') {
-    clearEmptyPlaceholder();
+function addUserBubble(text) {
+    hideEmpty();
+    const div = document.createElement('div');
+    div.className = 'chat-bubble chat-bubble-user';
+    div.innerHTML = `<div class="chat-bubble-content">${escapeHtml(text)}</div>`;
+    el.chatMessages.appendChild(div);
+    div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
 
-    const cfg = AGENT_CONFIG[agent] || { icon: '●', label: agent };
+function addChatMessage(message, agent = 'system', type = '') {
+    hideEmpty();
+    if (agent === 'user') { addUserBubble(message); return; }
+
+    const cfg = AGENT_CONFIG[agent] || { icon: '●', label: agent, cls: '' };
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    const bubble = document.createElement('div');
-    bubble.className = `chat-bubble chat-bubble-${agent}`;
+    const color = type === 'error' ? 'color:var(--error);'
+        : type === 'warning'       ? 'color:var(--warning);'
+        : '';                       // no green — 'success' treated as neutral
 
-    const colorClass = type === 'success' ? 'style="color: var(--success);"'
-        : type === 'error' ? 'style="color: var(--error);"'
-        : type === 'warning' ? 'style="color: var(--warning);"'
-        : '';
-
-    bubble.innerHTML = `
+    const div = document.createElement('div');
+    div.className = `chat-bubble ${cfg.cls}`;
+    div.innerHTML = `
         <div class="chat-bubble-header">
             <span>${cfg.icon}</span>
             <span class="chat-agent-name">${cfg.label}</span>
             <span class="chat-time">${time}</span>
         </div>
-        <div class="chat-bubble-content" ${colorClass}>${message}</div>
-    `;
-
-    elements.chatMessages.appendChild(bubble);
-    bubble.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        <div class="chat-bubble-content" style="${color}">${message}</div>`;
+    el.chatMessages.appendChild(div);
+    div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    return div;
 }
 
-/**
- * Show/hide typing indicator
- */
-function setTypingIndicator(visible) {
-    if (elements.typingIndicator) {
-        if (visible) {
-            elements.typingIndicator.classList.remove('hidden');
-        } else {
-            elements.typingIndicator.classList.add('hidden');
+function addOutputBlock(text) {
+    hideEmpty();
+    const div = document.createElement('div');
+    div.className = 'chat-output';
+    div.innerHTML = renderMarkdown(text);
+    el.chatMessages.appendChild(div);
+    div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+
+function escapeHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function setTyping(on) {
+    if (el.headerTyping) el.headerTyping.classList.toggle('hidden', !on);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Status bar (header pills)
+// ═══════════════════════════════════════════════════════════════════════
+
+function showStatusBar() { if (el.statusPills) el.statusPills.style.display = 'flex'; }
+function hideStatusBar() { if (el.statusPills) el.statusPills.style.display = 'none'; }
+
+function setHeaderStatus(status) {
+    if (!el.headerStatus) return;
+    el.headerStatus.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+    el.headerStatus.className = `task-status ${status}`;
+}
+
+function setHeaderAgent(agent) { if (el.headerAgent) el.headerAgent.textContent = agent || '—'; }
+function setHeaderIter(cur, max = 10) { if (el.headerIter) el.headerIter.textContent = `${cur}/${max}`; }
+
+// ═══════════════════════════════════════════════════════════════════════
+// Session sidebar
+// ═══════════════════════════════════════════════════════════════════════
+
+function renderSessions(tasks) {
+    if (!tasks || tasks.length === 0) {
+        el.sessionsList.innerHTML = '<div class="sessions-empty">No sessions yet.<br>Start a task to begin.</div>';
+        return;
+    }
+
+    el.sessionsList.innerHTML = tasks.map(t => `
+        <div class="session-item ${t.task_id === state.activeSessionId ? 'active' : ''}"
+             data-id="${t.task_id}" onclick="loadSession('${t.task_id}')">
+            <div class="session-title">${escapeHtml(t.objective)}</div>
+            <div class="session-meta">
+                <span class="session-badge ${t.status}">${t.status}</span>
+                <span>${t.iteration ?? 0}/${t.max_iterations ?? 10} iter</span>
+            </div>
+        </div>`).join('');
+}
+
+async function loadSessions() {
+    try {
+        const data = await api.listTasks(40);
+        renderSessions(data.tasks || []);
+    } catch (e) {
+        console.error('Failed to load sessions:', e);
+    }
+}
+
+async function loadSession(taskId) {
+    if (state.eventSource) return; // don't switch while a task is running
+
+    state.activeSessionId = taskId;
+    state.isViewingHistory = true;  // next submit will clear this historical view
+
+    // Update sidebar active state
+    document.querySelectorAll('.session-item').forEach(s => {
+        s.classList.toggle('active', s.dataset.id === taskId);
+    });
+
+    try {
+        const task = await api.getTask(taskId);
+
+        // Clear chat and render the historical session
+        el.chatMessages.innerHTML = '';
+        if (el.chatEmpty) el.chatEmpty.style.display = 'none';
+
+        // Show the original objective as user bubble
+        addUserBubble(task.objective);
+
+        // Show agent messages
+        if (task.messages && task.messages.length > 0) {
+            task.messages.forEach(msg => {
+                const agent = msg.agent_name || 'system';
+                const content = msg.content || {};
+                const text = content.message || content.summary || content.result || content.type || '';
+                if (text) addChatMessage(escapeHtml(String(text)), agent);
+            });
         }
-    }
-}
 
-/**
- * Show final output as a chat bubble
- */
-function showFinalOutput(output) {
-    addChatMessage(`<strong>Final Output:</strong><br><pre style="margin-top:6px;white-space:pre-wrap;font-size:13px;">${output}</pre>`, 'system', 'success');
-}
+        // Show final output (white, markdown-rendered)
+        if (task.final_output) {
+            addOutputBlock(task.final_output);
+        } else if (task.status === 'completed') {
+            addChatMessage('Task completed.', 'system');
+        }
 
-// ═══════════════════════════════════════════════════════════════════════
-// Status Bar Updates
-// ═══════════════════════════════════════════════════════════════════════
+        // Show errors
+        if (task.errors && task.errors.length > 0) {
+            task.errors.forEach(e => addChatMessage(`Error: ${escapeHtml(e)}`, 'system', 'error'));
+        }
 
-function updateTaskStatus(status) {
-    if (!elements.taskStatus) return;
-    elements.taskStatus.textContent = status.charAt(0).toUpperCase() + status.slice(1);
-    elements.taskStatus.className = `task-status ${status}`;
-}
+        // Update session title
+        if (el.sessionTitle) {
+            el.sessionTitle.textContent = task.objective.length > 60
+                ? task.objective.slice(0, 60) + '…'
+                : task.objective;
+        }
 
-function updateProgress(percent) {
-    if (elements.progressBar) {
-        elements.progressBar.style.width = `${percent}%`;
-    }
-}
-
-function updateCurrentAgent(agent) {
-    if (elements.currentAgent) {
-        elements.currentAgent.textContent = agent || '—';
-    }
-}
-
-function updateIteration(current, max = 10) {
-    if (elements.iteration) {
-        elements.iteration.textContent = `${current} / ${max}`;
+    } catch (e) {
+        addChatMessage('Failed to load session.', 'system', 'error');
     }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// SSE Event Handling
+// SSE streaming
 // ═══════════════════════════════════════════════════════════════════════
 
-function connectToTaskStream(taskId, streamUrl) {
-    if (state.eventSource) {
-        state.eventSource.close();
-    }
+function connectStream(taskId, streamUrl) {
+    if (state.eventSource) state.eventSource.close();
 
-    const eventSource = new EventSource(streamUrl);
-    state.eventSource = eventSource;
+    const es = new EventSource(streamUrl);
+    state.eventSource = es;
     state.currentTaskId = taskId;
 
-    eventSource.addEventListener('task_start', (e) => {
-        const data = JSON.parse(e.data);
-        console.log('Task started:', data);
-        addChatMessage('Task started', 'system');
-        setTypingIndicator(true);
-
-        elements.submitBtn.innerHTML = '<span class="spinner"></span> Working...';
-        elements.stopBtn.classList.remove('hidden');
+    es.addEventListener('task_start', () => {
+        setTyping(true);
+        el.submitBtn.innerHTML = '<span class="spinner"></span>';
+        el.submitBtn.disabled = true;
+        el.stopBtn.classList.remove('hidden');
     });
 
-    eventSource.addEventListener('agent_start', (e) => {
-        const data = JSON.parse(e.data);
-        console.log('Agent starting:', data);
-
-        updateCurrentAgent(data.agent);
-        updateIteration(data.iteration);
-        setTypingIndicator(true);
-        addChatMessage(`Starting…`, data.agent || 'system');
+    es.addEventListener('agent_start', e => {
+        const d = JSON.parse(e.data);
+        setTyping(true);
+        setHeaderAgent(d.agent);
+        setHeaderIter(d.iteration);
+        addChatMessage('Starting…', d.agent || 'system');
     });
 
-    eventSource.addEventListener('agent_progress', (e) => {
-        const data = JSON.parse(e.data);
-        console.log('Agent progress:', data);
-
-        if (data.current_agent) {
-            updateCurrentAgent(data.current_agent);
-        }
-
-        if (typeof data.iteration === 'number') {
-            updateIteration(data.iteration, 10);
-        }
-
-        if (data.progress) {
-            updateProgress(data.progress);
-        }
-
-        if (data.message) {
-            addChatMessage(data.message, data.current_agent || 'system');
-        }
+    es.addEventListener('agent_progress', e => {
+        const d = JSON.parse(e.data);
+        if (d.current_agent) setHeaderAgent(d.current_agent);
+        if (typeof d.iteration === 'number') setHeaderIter(d.iteration);
+        if (d.message) addChatMessage(escapeHtml(d.message), d.current_agent || 'system');
     });
 
-    eventSource.addEventListener('agent_complete', (e) => {
-        const data = JSON.parse(e.data);
-        console.log('Agent completed:', data);
-
-        setTypingIndicator(false);
-        addChatMessage(`Completed (${data.duration_ms}ms)`, data.agent || 'system', 'success');
+    es.addEventListener('agent_complete', e => {
+        const d = JSON.parse(e.data);
+        setTyping(false);
+        addChatMessage(`Done (${d.duration_ms}ms)`, d.agent || 'system');
     });
 
-    eventSource.addEventListener('approval_required', (e) => {
-        const data = JSON.parse(e.data);
-        console.log('Approval required:', data);
+    es.addEventListener('routing_decision', e => {
+        const d = JSON.parse(e.data);
+        addChatMessage(`Routing → ${d.next_agent}`, 'supervisor');
+    });
 
-        setTypingIndicator(false);
-        addChatMessage('⚠️ Approval required — check the <a href="/approvals" style="color:var(--warning);">Approvals page</a>', 'system', 'warning');
+    es.addEventListener('iteration', e => {
+        const d = JSON.parse(e.data);
+        setHeaderIter(d.iteration, d.max);
+        addChatMessage(`Iteration ${d.iteration}/${d.max}`, 'supervisor');
+    });
 
+    es.addEventListener('approval_required', () => {
+        setTyping(false);
+        addChatMessage('⚠️ Approval required — check <a href="/approvals" style="color:var(--warning);">Approvals</a>', 'system', 'warning');
         if ('Notification' in window && Notification.permission === 'granted') {
             new Notification('Approval Required', { body: 'An operation needs your approval' });
         }
     });
 
-    eventSource.addEventListener('approval_decided', (e) => {
-        const data = JSON.parse(e.data);
-        console.log('Approval decided:', data);
-
-        const status = data.approved ? 'approved' : 'rejected';
-        addChatMessage(`Approval ${status}`, 'system', status === 'approved' ? 'success' : 'error');
+    es.addEventListener('approval_decided', e => {
+        const d = JSON.parse(e.data);
+        addChatMessage(`Approval ${d.approved ? 'approved ✓' : 'rejected ✗'}`, 'system', d.approved ? '' : 'error');
     });
 
-    eventSource.addEventListener('iteration', (e) => {
-        const data = JSON.parse(e.data);
-        console.log('Iteration:', data);
+    es.addEventListener('complete', e => {
+        const d = JSON.parse(e.data);
+        setTyping(false);
+        setHeaderStatus('completed');
 
-        updateIteration(data.iteration, data.max);
-        addChatMessage(`Iteration ${data.iteration}/${data.max}`, 'supervisor');
-    });
-
-    eventSource.addEventListener('routing_decision', (e) => {
-        const data = JSON.parse(e.data);
-        console.log('Routing decision:', data);
-
-        addChatMessage(`Routing to: ${data.next_agent}`, 'supervisor');
-    });
-
-    eventSource.addEventListener('complete', (e) => {
-        const data = JSON.parse(e.data);
-        console.log('Task completed:', data);
-
-        setTypingIndicator(false);
-        updateTaskStatus('completed');
-        updateProgress(100);
-        addChatMessage('✓ Task completed successfully', 'system', 'success');
-
-        if (data.final_output) {
-            showFinalOutput(data.final_output);
+        // Render final output as white markdown block, not green
+        if (d.final_output) {
+            addOutputBlock(d.final_output);
+        } else {
+            addChatMessage('✓ Task completed', 'system');
         }
 
-        elements.submitBtn.disabled = false;
-        elements.submitBtn.textContent = 'Start Task';
-        elements.stopBtn.classList.add('hidden');
-
-        eventSource.close();
+        resetInput();
+        es.close();
         state.eventSource = null;
+        loadSessions(); // refresh sidebar
     });
 
-    eventSource.addEventListener('error', (e) => {
+    es.addEventListener('error', e => {
         if (e.data) {
-            const data = JSON.parse(e.data);
-            console.error('Task error:', data);
-
-            setTypingIndicator(false);
-            updateTaskStatus('failed');
-            addChatMessage(`✗ Error: ${data.error}`, 'system', 'error');
+            const d = JSON.parse(e.data);
+            setTyping(false);
+            setHeaderStatus('failed');
+            addChatMessage(`✗ ${escapeHtml(d.error || 'Unknown error')}`, 'system', 'error');
         }
-
-        elements.submitBtn.disabled = false;
-        elements.submitBtn.textContent = 'Start Task';
-        elements.stopBtn.classList.add('hidden');
-
-        eventSource.close();
+        resetInput();
+        es.close();
         state.eventSource = null;
+        loadSessions();
     });
 
-    eventSource.addEventListener('keepalive', () => {
-        console.log('Keepalive ping');
-    });
-
-    eventSource.onerror = (error) => {
-        console.error('SSE connection error:', error);
-
-        if (eventSource.readyState === EventSource.CLOSED) {
-            setTypingIndicator(false);
-            addChatMessage('Connection closed', 'system', 'error');
-
-            elements.submitBtn.disabled = false;
-            elements.submitBtn.textContent = 'Start Task';
-            elements.stopBtn.classList.add('hidden');
+    es.onerror = () => {
+        if (es.readyState === EventSource.CLOSED) {
+            setTyping(false);
+            addChatMessage('Connection lost', 'system', 'error');
+            resetInput();
+            state.eventSource = null;
         }
     };
+
+    es.addEventListener('keepalive', () => {});
+}
+
+function resetInput() {
+    el.submitBtn.innerHTML = '↑';
+    el.submitBtn.disabled = false;
+    el.stopBtn.classList.add('hidden');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Event Listeners
+// Event listeners
 // ═══════════════════════════════════════════════════════════════════════
 
-elements.submitBtn.addEventListener('click', async () => {
-    const objective = elements.taskInput.value.trim();
-
-    if (!objective) {
-        alert('Please enter a task objective');
-        return;
-    }
+el.submitBtn.addEventListener('click', async () => {
+    const objective = el.taskInput.value.trim();
+    if (!objective) return;
 
     try {
-        elements.submitBtn.disabled = true;
-        elements.submitBtn.innerHTML = '<span class="spinner"></span> Starting...';
+        el.submitBtn.innerHTML = '<span class="spinner"></span>';
+        el.submitBtn.disabled = true;
 
         const response = await api.startTask(objective);
-        console.log('Task created:', response);
 
-        // Show status bar
-        elements.taskStatusBar.classList.remove('hidden');
-        updateTaskStatus('running');
-        updateProgress(0);
-        updateCurrentAgent(null);
-        updateIteration(0);
+        // Only clear if user was reviewing a past session — otherwise keep the thread going
+        if (state.isViewingHistory) {
+            el.chatMessages.innerHTML = '';
+            if (el.chatEmpty) el.chatEmpty.style.display = 'none';
+            // Set title to this new message
+            if (el.sessionTitle) {
+                el.sessionTitle.textContent = objective.length > 60 ? objective.slice(0, 60) + '…' : objective;
+            }
+        } else {
+            hideEmpty();
+        }
 
-        // Add separator in chat for new task
-        state.taskCount += 1;
-        addTaskSeparator(state.taskCount);
+        state.isViewingHistory = false;
+        state.activeSessionId = response.task_id;
 
-        connectToTaskStream(response.task_id, response.stream_url);
+        // Show user bubble
+        addUserBubble(objective);
+        el.taskInput.value = '';
+        el.taskInput.style.height = '';
 
-    } catch (error) {
-        console.error('Failed to start task:', error);
-        alert(`Failed to start task: ${error.message}`);
+        // Show status pills
+        showStatusBar();
+        setHeaderStatus('running');
+        setHeaderAgent('—');
+        setHeaderIter(0);
 
-        elements.submitBtn.disabled = false;
-        elements.submitBtn.textContent = 'Start Task';
+        connectStream(response.task_id, response.stream_url);
+        loadSessions();
+
+    } catch (err) {
+        resetInput();
+        addChatMessage(`Failed to start: ${escapeHtml(err.message)}`, 'system', 'error');
     }
 });
 
-elements.stopBtn.addEventListener('click', async () => {
+el.stopBtn.addEventListener('click', async () => {
     if (!state.currentTaskId) return;
-
-    const confirmed = confirm('Are you sure you want to stop this task?');
-    if (!confirmed) return;
+    if (!confirm('Stop this task?')) return;
 
     try {
         await api.cancelTask(state.currentTaskId);
-
-        setTypingIndicator(false);
-        addChatMessage('Task cancelled by user', 'system', 'warning');
-
-        if (state.eventSource) {
-            state.eventSource.close();
-            state.eventSource = null;
-        }
-
-        updateTaskStatus('cancelled');
-        elements.submitBtn.disabled = false;
-        elements.submitBtn.textContent = 'Start Task';
-        elements.stopBtn.classList.add('hidden');
-
-    } catch (error) {
-        console.error('Failed to cancel task:', error);
-        alert(`Failed to cancel task: ${error.message}`);
+        if (state.eventSource) { state.eventSource.close(); state.eventSource = null; }
+        setTyping(false);
+        setHeaderStatus('cancelled');
+        addChatMessage('Task stopped by user.', 'system', 'warning');
+        resetInput();
+        loadSessions();
+    } catch (err) {
+        addChatMessage(`Failed to stop: ${escapeHtml(err.message)}`, 'system', 'error');
     }
 });
 
-elements.taskInput.addEventListener('keydown', (e) => {
+el.newChatBtn.addEventListener('click', () => {
+    if (state.eventSource) return; // busy
+
+    state.activeSessionId = null;
+    state.isViewingHistory = false;
+    el.chatMessages.innerHTML = '';
+
+    // Re-show empty placeholder
+    if (el.chatEmpty) {
+        el.chatEmpty.style.display = '';
+        el.chatMessages.appendChild(el.chatEmpty);
+    }
+
+    hideStatusBar();
+    if (el.sessionTitle) el.sessionTitle.textContent = 'The Orchestrator';
+    el.taskInput.focus();
+
+    document.querySelectorAll('.session-item').forEach(s => s.classList.remove('active'));
+});
+
+// Auto-resize textarea
+el.taskInput.addEventListener('input', () => {
+    el.taskInput.style.height = 'auto';
+    el.taskInput.style.height = Math.min(el.taskInput.scrollHeight, 200) + 'px';
+});
+
+el.taskInput.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        elements.submitBtn.click();
+        el.submitBtn.click();
     }
 });
 
 // ═══════════════════════════════════════════════════════════════════════
-// Initialization
+// Init
 // ═══════════════════════════════════════════════════════════════════════
 
-function init() {
-    console.log('Initializing Command Center...');
-
+async function init() {
     if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission();
     }
+    await loadSessions();
 
-    console.log('Command Center ready ✓');
+    // Auto-refresh sessions every 15s (picks up status changes)
+    setInterval(loadSessions, 15000);
 }
 
 if (document.readyState === 'loading') {

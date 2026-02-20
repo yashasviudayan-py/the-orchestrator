@@ -128,6 +128,26 @@ class EnhancedSupervisor:
 
         # ⚡ FAST HEURISTICS (instant routing for common patterns)
 
+        # 0. Project/current-codebase questions — checked FIRST so they beat generic "tell me"
+        #    These are questions about THIS project, its state, what we've done, etc.
+        project_context_keywords = [
+            'this project', 'our project', 'the project', 'the orchestrator',
+            "what's going on", "what is going on", "what's happening", "what is happening",
+            'current state', 'project status', 'what are we', 'how is it going',
+            'what do we have', 'what have we', 'what have you', 'what has been',
+            'show me what', 'current implementation', 'existing code', 'our code',
+            'my project', 'this codebase', 'the codebase', 'our codebase',
+            'status of', 'progress on', 'progress of',
+        ]
+        if any(kw in objective_lower for kw in project_context_keywords):
+            return RoutingDecision(
+                next_agent=AgentType.CONTEXT,
+                strategy_used=RoutingStrategy.ADAPTIVE,
+                reasoning="Current-project question detected - using Context Core for codebase state",
+                confidence=0.95,
+                alternative_agents=[AgentType.RESEARCH, AgentType.PR],
+            )
+
         # 1. Knowledge/Research questions (tell me, what is, how does, explain)
         research_keywords = ['tell me', 'what is', 'how does', 'explain', 'who is', 'why is',
                             'describe', 'information about', 'details about', 'learn about']

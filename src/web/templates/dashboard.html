@@ -7,7 +7,7 @@
     <script>(function(){ document.documentElement.setAttribute('data-theme', localStorage.getItem('orchestrator-theme')||'dark'); })();</script>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
-<body>
+<body style="overflow: hidden;">
     <!-- Navigation -->
     <nav class="navbar">
         <div class="container navbar-content">
@@ -23,88 +23,66 @@
         </div>
     </nav>
 
-    <!-- Main Content -->
-    <main class="main">
-        <div class="container">
-            <!-- Page Header -->
-            <h1 class="section-title">Command Center</h1>
-            <p class="section-subtitle">Orchestrate multiple AI agents to accomplish complex software development tasks</p>
+    <!-- ChatGPT-style layout -->
+    <div class="chat-layout">
 
-            <!-- Task Input -->
-            <div class="task-input-container">
-                <div class="card">
-                    <h2 class="card-title">Start New Task</h2>
+        <!-- Sidebar: session history -->
+        <aside class="chat-sidebar">
+            <div class="sidebar-header">
+                <button class="new-chat-btn" id="new-chat-btn">✦ New Task</button>
+            </div>
+            <div class="sessions-list" id="sessions-list">
+                <div class="sessions-empty">No sessions yet.<br>Start a task to begin.</div>
+            </div>
+        </aside>
+
+        <!-- Main chat area -->
+        <div class="chat-main">
+
+            <!-- Session header bar -->
+            <div class="chat-main-header">
+                <span class="chat-session-title" id="session-title">The Orchestrator</span>
+                <div class="header-status-pills" id="status-pills" style="display:none;">
+                    <span id="header-status" class="task-status running">Running</span>
+                    <span>Agent: <strong id="header-agent">—</strong></span>
+                    <span>Iter: <strong id="header-iter">0/10</strong></span>
+                    <div id="header-typing" class="typing-indicator hidden">
+                        <span class="typing-dot"></span>
+                        <span class="typing-dot"></span>
+                        <span class="typing-dot"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Messages -->
+            <div class="chat-messages" id="chat-messages">
+                <div class="chat-empty text-dim" id="chat-empty" style="margin: auto; text-align:center; padding: 48px 24px;">
+                    <div style="font-size: 32px; margin-bottom: 12px;">🎛️</div>
+                    <div style="font-size: 18px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">The Orchestrator</div>
+                    <div style="font-size: 14px; max-width: 360px;">Ask anything about your project, or give a task to the AI agents. Results are saved automatically.</div>
+                </div>
+            </div>
+
+            <!-- Input bar — fixed at bottom -->
+            <div class="chat-input-bar">
+                <div class="chat-input-row">
                     <textarea
                         id="task-input"
                         class="task-input"
-                        placeholder="What would you like to accomplish?&#10;&#10;Example: Add OAuth2 authentication to my React app using best practices"
-                        rows="4"
+                        placeholder="Ask something or give a task…"
+                        rows="1"
                     ></textarea>
-                    <div class="task-options">
-                        <button id="submit-btn" class="btn btn-primary">
-                            Start Task
-                        </button>
-                        <button id="stop-btn" class="btn btn-danger hidden" style="margin-left: 12px;">
-                            ⏹ Stop Task
-                        </button>
-                        <span class="text-dim" style="line-height: 32px;">
-                            Press Enter to submit • Shift+Enter for new line
-                        </span>
-                    </div>
+                    <button id="stop-btn" class="btn btn-danger stop-btn-inline hidden">⏹</button>
+                    <button id="submit-btn" class="send-btn" title="Send (Enter)">↑</button>
+                </div>
+                <div style="text-align:center; margin-top: 6px; font-size: 11px; color: var(--text-dim);">
+                    Enter to send · Shift+Enter for new line
                 </div>
             </div>
 
-            <!-- Compact task status bar (hidden until task starts) -->
-            <div id="task-status-bar" class="task-status-bar hidden">
-                <div class="progress-bar" style="margin-bottom: 8px;">
-                    <div id="progress-bar" class="progress-fill" style="width: 0%;"></div>
-                </div>
-                <div>
-                    Status: <span id="task-status" class="task-status running">Running</span>
-                    &nbsp;·&nbsp; Agent: <span id="current-agent" class="text-primary">—</span>
-                    &nbsp;·&nbsp; Iteration: <span id="iteration" class="text-primary">0 / 10</span>
-                </div>
-            </div>
-
-            <!-- Persistent Chat Container -->
-            <div class="chat-container card" id="chat-container">
-                <div class="chat-header">
-                    <span class="card-title" style="margin-bottom: 0;">Agent Activity</span>
-                    <div id="typing-indicator" class="typing-indicator hidden">
-                        <span class="typing-dot"></span>
-                        <span class="typing-dot"></span>
-                        <span class="typing-dot"></span>
-                        <span class="text-dim" style="font-size: 12px; margin-left: 4px;">working…</span>
-                    </div>
-                </div>
-                <div class="chat-messages" id="chat-messages">
-                    <div class="chat-empty text-dim">Start a task to see agent activity here.</div>
-                </div>
-            </div>
-
-            <!-- Quick Tips -->
-            <div class="card mt-3">
-                <div class="card-title">Quick Tips</div>
-                <div class="card-content">
-                    <ul style="list-style: none; padding: 0; color: var(--text-secondary);">
-                        <li style="margin-bottom: 8px;">💡 The orchestrator will automatically route your task to the appropriate agents</li>
-                        <li style="margin-bottom: 8px;">🔒 Risky operations (like git push, code execution) will require your approval</li>
-                        <li style="margin-bottom: 8px;">📊 Check the <a href="/analytics" style="color: var(--text-primary); text-decoration: none;">Analytics</a> page for insights on agent performance</li>
-                        <li style="margin-bottom: 8px;">🏥 Monitor all services on the <a href="/health" style="color: var(--text-primary); text-decoration: none;">Health</a> page</li>
-                    </ul>
-                </div>
-            </div>
         </div>
-    </main>
+    </div>
 
-    <!-- Footer -->
-    <footer style="padding: 32px 0; text-align: center; color: var(--text-dim); font-size: 13px;">
-        <div class="container">
-            The Orchestrator • 100% Local • No Cloud APIs • Full Privacy
-        </div>
-    </footer>
-
-    <!-- JavaScript -->
     <script src="/static/js/dashboard.js"></script>
 </body>
 </html>
