@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+include = ["src*"]
 
 [project]
 name = "the-orchestrator"
@@ -71,7 +71,7 @@ dev = [
 ]
 
 [project.scripts]
-orchestrator = "cli.main:cli"
+orchestrator = "src.cli.main:cli"
 
 [tool.black]
 line-length = 100

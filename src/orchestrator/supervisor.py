@@ -253,6 +253,59 @@ Agent:"""
                 alternative_agents=[],
             )
 
+        # ⚡ FAST HEURISTICS — skip LLM for obvious decisions
+
+        objective_lower = state.objective.lower()
+        informational_keywords = [
+            'tell me', 'what is', 'how does', 'explain', 'who is', 'why is',
+            'describe', 'information about', 'details about', 'learn about',
+            'what are', 'how do', 'what does', 'can you explain',
+        ]
+
+        # 1. PR completed successfully → always DONE
+        if state.pr_results and state.pr_results.success:
+            logger.info("⚡ Heuristic: PR succeeded → DONE")
+            decision = RoutingDecision(
+                next_agent=None,
+                strategy_used=self.default_strategy,
+                reasoning="PR completed successfully",
+                confidence=1.0,
+                alternative_agents=[],
+            )
+            self.decision_history.append(decision)
+            return decision
+
+        # 2. Research done + informational query → DONE (no code needed)
+        if (
+            AgentType.RESEARCH in state.agents_called
+            and AgentType.PR not in state.agents_called
+            and any(kw in objective_lower for kw in informational_keywords)
+        ):
+            logger.info("⚡ Heuristic: informational query with research done → DONE")
+            decision = RoutingDecision(
+                next_agent=None,
+                strategy_used=self.default_strategy,
+                reasoning="Informational query answered by research",
+                confidence=0.95,
+                alternative_agents=[],
+            )
+            self.decision_history.append(decision)
+            return decision
+
+        # 3. All three agents done → DONE
+        all_agents = {AgentType.RESEARCH, AgentType.CONTEXT, AgentType.PR}
+        if all_agents.issubset(set(state.agents_called)):
+            logger.info("⚡ Heuristic: all agents called → DONE")
+            decision = RoutingDecision(
+                next_agent=None,
+                strategy_used=self.default_strategy,
+                reasoning="All agents have been called",
+                confidence=1.0,
+                alternative_agents=[],
+            )
+            self.decision_history.append(decision)
+            return decision
+
         # Build state summary for LLM
         state_summary = await self.summarizer.summarize_task_state(state)
 

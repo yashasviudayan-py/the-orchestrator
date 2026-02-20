@@ -22,12 +22,41 @@ from ..api.approval import ApprovalStatus, RiskLevel
 logger = logging.getLogger(__name__)
 
 
+def _get(task, key, default=None):
+    """Get a field from either a dict or an object, parsing datetime strings."""
+    if isinstance(task, dict):
+        val = task.get(key, default)
+        if val and key in ('created_at', 'updated_at', 'completed_at') and isinstance(val, str):
+            try:
+                return datetime.fromisoformat(val)
+            except (ValueError, TypeError):
+                return default
+        return val
+    return getattr(task, key, default)
+
+
+def _status_str(task) -> str:
+    """Get task status as a plain string from either a dict or an object."""
+    status = _get(task, 'status')
+    if status is None:
+        return ''
+    if isinstance(status, str):
+        return status
+    return status.value if hasattr(status, 'value') else str(status)
+
+
 class AnalyticsService:
     """Service for collecting and computing analytics."""
 
     def __init__(self):
-        self.task_manager = get_task_manager()
-        self.approval_manager = get_approval_manager()
+        try:
+            self.task_manager = get_task_manager()
+        except Exception:
+            self.task_manager = None
+        try:
+            self.approval_manager = get_approval_manager()
+        except Exception:
+            self.approval_manager = None
 
     def get_task_statistics(self, days: int = 7) -> Dict:
         """
@@ -45,14 +74,13 @@ class AnalyticsService:
         cutoff = datetime.now() - timedelta(days=days)
         recent_tasks = [
             t for t in all_tasks
-            if t.created_at and t.created_at > cutoff
+            if _get(t, 'created_at') and _get(t, 'created_at') > cutoff
         ]
 
         # Count by status
         status_counts = defaultdict(int)
         for task in recent_tasks:
-            status = task.status.value if hasattr(task.status, 'value') else str(task.status)
-            status_counts[status] += 1
+            status_counts[_status_str(task)] += 1
 
         # Calculate success rate
         completed = status_counts.get('completed', 0)
@@ -62,9 +90,9 @@ class AnalyticsService:
 
         # Average iterations
         iterations = [
-            task.iteration
+            _get(task, 'iteration', 0)
             for task in recent_tasks
-            if (task.status.value if hasattr(task.status, 'value') else str(task.status)) == 'completed'
+            if _status_str(task) == 'completed'
         ]
         avg_iterations = sum(iterations) / len(iterations) if iterations else 0
 
@@ -95,7 +123,7 @@ class AnalyticsService:
         cutoff = datetime.now() - timedelta(days=days)
         recent_tasks = [
             t for t in all_tasks
-            if t.created_at and t.created_at > cutoff
+            if _get(t, 'created_at') and _get(t, 'created_at') > cutoff
         ]
 
         # Count agent invocations from full task states
@@ -105,18 +133,23 @@ class AnalyticsService:
         agent_errors = defaultdict(int)
 
         for task_info in recent_tasks:
-            # Get full task state to access messages
-            task_state = self.task_manager.get_task(task_info.task_id)
-            if not task_state or not hasattr(task_state, 'messages'):
-                continue
+            # Use inline messages if present (dict tasks), otherwise fetch full state
+            inline_messages = _get(task_info, 'messages')
+            if inline_messages is not None:
+                messages = inline_messages
+            else:
+                task_state = self.task_manager.get_task(_get(task_info, 'task_id'))
+                if not task_state or not hasattr(task_state, 'messages'):
+                    continue
+                messages = task_state.messages
 
-            for msg in task_state.messages:
-                agent = getattr(msg, 'agent_name', None)
+            for msg in messages:
+                agent = msg.get('agent_name') if isinstance(msg, dict) else getattr(msg, 'agent_name', None)
                 if agent:
                     agent_counts[agent] += 1
 
                     # Track success/errors (simplified)
-                    content = getattr(msg, 'content', {})
+                    content = msg.get('content', {}) if isinstance(msg, dict) else getattr(msg, 'content', {})
                     msg_type = content.get('type', '') if isinstance(content, dict) else ''
                     if 'error' in msg_type.lower():
                         agent_errors[agent] += 1
@@ -212,27 +245,32 @@ class AnalyticsService:
         cutoff = datetime.now() - timedelta(days=days)
         recent_tasks = [
             t for t in all_tasks
-            if t.created_at and t.created_at > cutoff
+            if _get(t, 'created_at') and _get(t, 'created_at') > cutoff
         ]
 
         # Count routing strategy usage
         strategy_counts = defaultdict(int)
         for task in recent_tasks:
-            strategy = task.routing_strategy
+            strategy = _get(task, 'routing_strategy')
             strategy_counts[strategy] += 1
 
         # Count transitions between agents
         transition_counts = defaultdict(int)
         for task_info in recent_tasks:
-            # Get full task state to access messages
-            task_state = self.task_manager.get_task(task_info.task_id)
-            if not task_state or not hasattr(task_state, 'messages'):
-                continue
+            # Use inline messages if present (dict tasks), otherwise fetch full state
+            inline_messages = _get(task_info, 'messages')
+            if inline_messages is not None:
+                messages = inline_messages
+            else:
+                task_state = self.task_manager.get_task(_get(task_info, 'task_id'))
+                if not task_state or not hasattr(task_state, 'messages'):
+                    continue
+                messages = task_state.messages
 
             agents = [
-                getattr(m, 'agent_name', None)
-                for m in task_state.messages
-                if getattr(m, 'agent_name', None)
+                (m.get('agent_name') if isinstance(m, dict) else getattr(m, 'agent_name', None))
+                for m in messages
+                if (m.get('agent_name') if isinstance(m, dict) else getattr(m, 'agent_name', None))
             ]
 
             # Count transitions
@@ -269,15 +307,16 @@ class AnalyticsService:
         cutoff = datetime.now() - timedelta(days=days)
         recent_tasks = [
             t for t in all_tasks
-            if t.created_at and t.created_at > cutoff
+            if _get(t, 'created_at') and _get(t, 'created_at') > cutoff
         ]
 
         # Calculate task completion times
         completion_times = []
         for task in recent_tasks:
-            status_val = task.status.value if hasattr(task.status, 'value') else str(task.status)
-            if status_val == 'completed' and task.completed_at:
-                duration = (task.completed_at - task.created_at).total_seconds()
+            completed_at = _get(task, 'completed_at')
+            created_at = _get(task, 'created_at')
+            if _status_str(task) == 'completed' and completed_at and created_at:
+                duration = (completed_at - created_at).total_seconds()
                 completion_times.append(duration)
 
         avg_completion_time = sum(completion_times) / len(completion_times) if completion_times else 0

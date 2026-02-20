@@ -225,9 +225,11 @@ Summary:"""
         elif target_agent == "context":
             # Context agent needs to know what research found
             if state.research_results:
-                summary = await self.summarize_research_results(
-                    state.research_results,
-                    state.objective,
+                # Reuse cached summary; only call LLM if nothing is cached
+                summary = (
+                    state.user_context.get("research_summary")
+                    or state.research_results.summary
+                    or await self.summarize_research_results(state.research_results, state.objective)
                 )
                 context["research_findings"] = summary
 
@@ -236,16 +238,18 @@ Summary:"""
             summaries = []
 
             if state.research_results:
-                research_summary = await self.summarize_research_results(
-                    state.research_results,
-                    state.objective,
+                research_summary = (
+                    state.user_context.get("research_summary")
+                    or state.research_results.summary
+                    or await self.summarize_research_results(state.research_results, state.objective)
                 )
                 summaries.append(f"Research Findings:\n{research_summary}")
 
             if state.context_results:
-                context_summary = await self.summarize_context_results(
-                    state.context_results,
-                    state.objective,
+                context_summary = (
+                    state.user_context.get("context_summary")
+                    or state.context_results.summary
+                    or await self.summarize_context_results(state.context_results, state.objective)
                 )
                 summaries.append(f"Context & Prior Work:\n{context_summary}")
 

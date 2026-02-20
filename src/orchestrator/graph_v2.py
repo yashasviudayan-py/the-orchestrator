@@ -65,7 +65,7 @@ class EnhancedOrchestratorGraph:
             base_url=llm_base_url,
             model=llm_model,
             temperature=0.7,
-            timeout=120.0,  # 2 minutes for Ollama requests
+            timeout=60.0,  # 1 minute per Ollama call
         )
 
         # Initialize Phase 2 components
@@ -204,20 +204,16 @@ class EnhancedOrchestratorGraph:
         state_dict = await self.nodes.call_research_agent(state)
         task_state = TaskState(**state_dict)
 
-        # Summarize results for next agent
+        # Cache a compact summary without an extra LLM round-trip.
+        # The full content is already in research_results; we just store
+        # a short excerpt so later agents have something to reference quickly.
         if task_state.research_results:
-            try:
-                summary = await self.summarizer.summarize_research_results(
-                    task_state.research_results,
-                    task_state.objective,
-                )
-                # Store summary in user_context for next agent
-                task_state.user_context["research_summary"] = summary
-
-                logger.info(f"Research summary created: {len(summary)} chars")
-
-            except Exception as e:
-                logger.error(f"Failed to summarize research: {e}")
+            summary = (
+                task_state.research_results.summary
+                or (task_state.research_results.content[:600] if task_state.research_results.content else "")
+            )
+            task_state.user_context["research_summary"] = summary
+            logger.info(f"Research summary cached: {len(summary)} chars (no extra LLM call)")
 
         return task_state.model_dump()
 
@@ -227,19 +223,17 @@ class EnhancedOrchestratorGraph:
         state_dict = await self.nodes.call_context_agent(state)
         task_state = TaskState(**state_dict)
 
-        # Summarize results
+        # Cache context summary without extra LLM call
         if task_state.context_results:
-            try:
-                summary = await self.summarizer.summarize_context_results(
-                    task_state.context_results,
-                    task_state.objective,
-                )
-                task_state.user_context["context_summary"] = summary
-
-                logger.info(f"Context summary created: {len(summary)} chars")
-
-            except Exception as e:
-                logger.error(f"Failed to summarize context: {e}")
+            cr = task_state.context_results
+            if cr.summary:
+                summary = cr.summary
+            elif cr.has_prior_work:
+                summary = f"Found {len(cr.relevant_docs)} relevant prior-work docs (confidence {cr.confidence:.0%})"
+            else:
+                summary = "No prior work found for this objective"
+            task_state.user_context["context_summary"] = summary
+            logger.info(f"Context summary cached: {len(summary)} chars (no extra LLM call)")
 
         return task_state.model_dump()
 

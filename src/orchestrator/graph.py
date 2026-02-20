@@ -214,10 +214,11 @@ class OrchestratorGraph:
             )
 
             # Stream graph execution
-            async for state_dict in self.graph.astream(initial_state.model_dump()):
-                # Convert to TaskState for type safety
-                state = TaskState(**state_dict)
-                yield state
+            # astream() yields {node_name: state_update} chunks
+            async for chunk in self.graph.astream(initial_state.model_dump()):
+                for _node_name, state_update in chunk.items():
+                    state = TaskState(**state_update)
+                    yield state
 
         except Exception as e:
             logger.error(f"Streaming orchestration failed: {e}")

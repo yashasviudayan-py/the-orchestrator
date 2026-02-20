@@ -50,12 +50,12 @@ class TaskInfo(BaseModel):
     status: TaskStatus
     current_agent: Optional[str] = None
     next_agent: Optional[str] = None
-    iteration: int
-    max_iterations: int
-    routing_strategy: str
-    hitl_enabled: bool
-    created_at: datetime
-    updated_at: datetime
+    iteration: int = 0
+    max_iterations: int = 10
+    routing_strategy: str = "adaptive"
+    hitl_enabled: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
     completed_at: Optional[datetime] = None
     duration_ms: Optional[int] = None
 

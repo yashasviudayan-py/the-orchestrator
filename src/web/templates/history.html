@@ -5,6 +5,87 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title }} - The Orchestrator</title>
     <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .task-row { cursor: pointer; transition: background 0.15s; }
+        .task-row:hover { background: var(--bg-secondary); }
+        .task-row.selected { background: color-mix(in srgb, var(--primary) 10%, transparent); }
+        .detail-panel {
+            margin-top: 24px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            display: none;
+        }
+        .detail-panel.visible { display: block; }
+        .detail-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+        }
+        .detail-body { padding: 20px; }
+        .output-content {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 20px;
+            margin-top: 12px;
+            line-height: 1.7;
+            white-space: pre-wrap;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        .output-content h1, .output-content h2, .output-content h3 {
+            margin: 16px 0 8px;
+        }
+        .meta-row {
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        .meta-badge {
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 12px;
+        }
+        .badge-completed { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); }
+        .badge-failed    { background: color-mix(in srgb, var(--danger)  15%, transparent); color: var(--danger); }
+        .badge-running   { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--warning); }
+        .badge-pending   { background: color-mix(in srgb, var(--text-dim) 15%, transparent); color: var(--text-dim); }
+        .close-btn {
+            background: none;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 4px 12px;
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        .close-btn:hover { background: var(--bg-secondary); }
+        .view-btn {
+            padding: 5px 14px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .error-list { margin-top: 12px; }
+        .error-item {
+            padding: 8px 12px;
+            border-radius: 4px;
+            background: color-mix(in srgb, var(--danger) 10%, transparent);
+            border-left: 3px solid var(--danger);
+            margin-bottom: 6px;
+            font-size: 13px;
+        }
+    </style>
 </head>
 <body>
     <nav class="navbar">
@@ -22,12 +103,23 @@
     <main class="main">
         <div class="container">
             <h1 class="section-title">Task History</h1>
-            <p class="section-subtitle">View all completed orchestration tasks</p>
+            <p class="section-subtitle">Click any row to read the full research output</p>
 
             <div class="card">
                 <div class="card-title">Recent Tasks</div>
                 <div class="card-content" id="tasks-container">
                     <p class="text-dim">Loading task history...</p>
+                </div>
+            </div>
+
+            <!-- Detail panel lives OUTSIDE the tasks-container so auto-refresh won't destroy it -->
+            <div class="detail-panel" id="detail-panel">
+                <div class="detail-header">
+                    <span id="detail-title" style="font-weight: 600; font-size: 15px;"></span>
+                    <button class="close-btn" onclick="closeDetail()">✕ Close</button>
+                </div>
+                <div class="detail-body" id="detail-body">
+                    <p class="text-dim">Loading…</p>
                 </div>
             </div>
         </div>
@@ -40,12 +132,30 @@
     </footer>
 
     <script>
-        // Fetch and display task history
+        let selectedTaskId = null;
+        let refreshInterval = null;
+
+        function badgeClass(status) {
+            return 'badge-' + (status || 'pending');
+        }
+
+        function renderMarkdown(text) {
+            if (!text) return '<em style="color:var(--text-dim)">No output available.</em>';
+            // Minimal markdown: headers, bold, bullet lists
+            return text
+                .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+                .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+                .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                .replace(/^- (.+)$/gm, '<li style="margin-left:16px">$1</li>')
+                .replace(/\n{2,}/g, '<br><br>')
+                .replace(/\n/g, '\n');
+        }
+
         async function loadHistory() {
             const container = document.getElementById('tasks-container');
-
             try {
-                const response = await fetch('/api/tasks');
+                const response = await fetch('/api/tasks?limit=100');
                 const data = await response.json();
 
                 if (data.tasks && data.tasks.length > 0) {
@@ -53,36 +163,38 @@
                     html += '<thead><tr style="border-bottom: 1px solid var(--border);">';
                     html += '<th style="padding: 12px; text-align: left;">Task</th>';
                     html += '<th style="padding: 12px; text-align: left;">Status</th>';
-                    html += '<th style="padding: 12px; text-align: left;">Agent</th>';
+                    html += '<th style="padding: 12px; text-align: left;">Iterations</th>';
                     html += '<th style="padding: 12px; text-align: left;">Duration</th>';
                     html += '<th style="padding: 12px; text-align: left;">Completed</th>';
-                    html += '<th style="padding: 12px; text-align: left;">Actions</th>';
+                    html += '<th style="padding: 12px; text-align: left;"></th>';
                     html += '</tr></thead><tbody>';
 
-                    data.tasks.forEach((task, index) => {
-                        const statusColor = task.status === 'completed' ? 'var(--success)' :
-                                          task.status === 'failed' ? 'var(--danger)' :
-                                          'var(--warning)';
-                        const duration = (task.duration_ms / 1000).toFixed(1) + 's';
-                        const completed = task.completed_at ?
-                            new Date(task.completed_at).toLocaleString() : '-';
+                    data.tasks.forEach(task => {
+                        const isSelected = task.task_id === selectedTaskId;
+                        const duration = task.duration_ms != null
+                            ? (task.duration_ms / 1000).toFixed(1) + 's'
+                            : '—';
+                        const completed = task.completed_at
+                            ? new Date(task.completed_at).toLocaleString()
+                            : '—';
 
-                        html += `<tr style="border-bottom: 1px solid var(--border-light);" id="task-${index}">`;
-                        html += `<td style="padding: 12px;">${task.objective}</td>`;
-                        html += `<td style="padding: 12px;"><span style="color: ${statusColor};">${task.status}</span></td>`;
-                        html += `<td style="padding: 12px;">${task.current_agent || '-'}</td>`;
+                        html += `<tr class="task-row${isSelected ? ' selected' : ''}"
+                                     id="row-${task.task_id}"
+                                     onclick="viewTask('${task.task_id}')">`;
+                        html += `<td style="padding: 12px; max-width: 380px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${task.objective}">${task.objective}</td>`;
+                        html += `<td style="padding: 12px;"><span class="meta-badge ${badgeClass(task.status)}">${task.status}</span></td>`;
+                        html += `<td style="padding: 12px;">${task.iteration ?? 0}/${task.max_iterations ?? 10}</td>`;
                         html += `<td style="padding: 12px;">${duration}</td>`;
                         html += `<td style="padding: 12px;">${completed}</td>`;
-                        html += `<td style="padding: 12px;"><button onclick="viewTask('${task.task_id}')" style="padding: 6px 12px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer;">View</button></td>`;
+                        html += `<td style="padding: 12px;"><button class="view-btn" onclick="event.stopPropagation(); viewTask('${task.task_id}')">View</button></td>`;
                         html += '</tr>';
                     });
 
                     html += '</tbody></table></div>';
-                    html += '<div id="task-details" style="margin-top: 24px;"></div>';
                     container.innerHTML = html;
                 } else {
                     container.innerHTML = '<p class="text-dim">No task history yet.</p>' +
-                        '<p class="text-dim mt-2">Completed tasks will appear here with full execution details.</p>';
+                        '<p class="text-dim mt-2">Completed tasks will appear here with full details.</p>';
                 }
             } catch (error) {
                 console.error('Failed to load history:', error);
@@ -90,52 +202,80 @@
             }
         }
 
-        // View task details
         async function viewTask(taskId) {
-            const detailsContainer = document.getElementById('task-details');
-            detailsContainer.innerHTML = '<div class="card"><div class="card-content"><p class="text-dim">Loading task details...</p></div></div>';
+            // Mark row as selected
+            document.querySelectorAll('.task-row').forEach(r => r.classList.remove('selected'));
+            const row = document.getElementById('row-' + taskId);
+            if (row) row.classList.add('selected');
+
+            selectedTaskId = taskId;
+
+            const panel = document.getElementById('detail-panel');
+            const body  = document.getElementById('detail-body');
+            const title = document.getElementById('detail-title');
+
+            panel.classList.add('visible');
+            body.innerHTML = '<p class="text-dim">Loading…</p>';
+            title.textContent = 'Loading…';
+            panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
             try {
                 const response = await fetch(`/api/tasks/${taskId}`);
+                if (!response.ok) {
+                    body.innerHTML = `<p style="color:var(--danger)">Error ${response.status}: task not found.</p>`;
+                    return;
+                }
                 const task = await response.json();
 
-                let html = '<div class="card">';
-                html += '<div class="card-title">Task Details</div>';
-                html += '<div class="card-content">';
+                title.textContent = task.objective;
 
-                // Task info
-                html += `<h3 style="margin-bottom: 12px;">${task.objective}</h3>`;
-                html += `<p style="color: var(--text-secondary); margin-bottom: 16px;">`;
-                html += `Status: <span style="color: ${task.status === 'completed' ? 'var(--success)' : 'var(--danger)'};">${task.status}</span> | `;
-                html += `Duration: ${(task.duration_ms / 1000).toFixed(1)}s | `;
-                html += `Iterations: ${task.iteration}/${task.max_iterations}`;
-                html += `</p>`;
+                const duration = task.duration_ms != null
+                    ? (task.duration_ms / 1000).toFixed(1) + 's'
+                    : '—';
 
-                // Final output
+                let html = `<div class="meta-row">
+                    <span>Status: <span class="meta-badge ${badgeClass(task.status)}">${task.status}</span></span>
+                    <span>Duration: <strong>${duration}</strong></span>
+                    <span>Iterations: <strong>${task.iteration ?? 0}/${task.max_iterations ?? 10}</strong></span>
+                    <span>Strategy: <strong>${task.routing_strategy || 'adaptive'}</strong></span>
+                </div>`;
+
+                // Research output
                 if (task.final_output) {
-                    html += '<div style="background: var(--bg-secondary); padding: 16px; border-radius: 4px; margin-top: 16px; white-space: pre-wrap; font-family: system-ui;">';
-                    html += task.final_output;
-                    html += '</div>';
+                    html += `<div style="font-weight:600; margin-bottom:6px;">Output</div>`;
+                    html += `<div class="output-content">${renderMarkdown(task.final_output)}</div>`;
                 } else {
-                    html += '<p class="text-dim">No output available.</p>';
+                    html += '<p class="text-dim">No final output recorded.</p>';
                 }
 
-                html += '<button onclick="document.getElementById(\'task-details\').innerHTML = \'\'" style="margin-top: 16px; padding: 8px 16px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 4px; cursor: pointer;">Close</button>';
-                html += '</div></div>';
+                // Errors
+                if (task.errors && task.errors.length > 0) {
+                    html += `<div style="font-weight:600; margin-top:20px; margin-bottom:6px;">Errors (${task.errors.length})</div>`;
+                    html += '<div class="error-list">';
+                    task.errors.forEach(e => {
+                        html += `<div class="error-item">${e}</div>`;
+                    });
+                    html += '</div>';
+                }
 
-                detailsContainer.innerHTML = html;
-                detailsContainer.scrollIntoView({ behavior: 'smooth' });
+                body.innerHTML = html;
             } catch (error) {
                 console.error('Failed to load task details:', error);
-                detailsContainer.innerHTML = '<div class="card"><div class="card-content"><p style="color: var(--danger);">Failed to load task details.</p></div></div>';
+                body.innerHTML = '<p style="color:var(--danger);">Failed to load task details.</p>';
             }
         }
 
-        // Load on page load
+        function closeDetail() {
+            document.getElementById('detail-panel').classList.remove('visible');
+            document.querySelectorAll('.task-row').forEach(r => r.classList.remove('selected'));
+            selectedTaskId = null;
+        }
+
+        // Initial load
         loadHistory();
 
-        // Refresh every 30 seconds
-        setInterval(loadHistory, 30000);
+        // Auto-refresh every 15s — but only reload the table, never destroy the detail panel
+        refreshInterval = setInterval(loadHistory, 15000);
     </script>
 </body>
 </html>

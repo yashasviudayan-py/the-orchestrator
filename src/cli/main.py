@@ -45,13 +45,24 @@ def cli(ctx: click.Context, verbose: bool) -> None:
 def serve(ctx: click.Context, host: str, port: int, reload: bool) -> None:
     """Start the Command Center web server."""
     console.print(f"[bold green]Starting Command Center on http://{host}:{port}[/bold green]")
-    uvicorn.run(
-        "src.web.server:app",
-        host=host,
-        port=port,
-        reload=reload,
-        log_level="debug" if ctx.obj.get("verbose") else "info",
-    )
+    if reload:
+        # String form required for reload mode (uvicorn watches files)
+        uvicorn.run(
+            "src.web.server:app",
+            host=host,
+            port=port,
+            reload=True,
+            log_level="debug" if ctx.obj.get("verbose") else "info",
+        )
+    else:
+        from ..web.server import app
+        uvicorn.run(
+            app,
+            host=host,
+            port=port,
+            reload=False,
+            log_level="debug" if ctx.obj.get("verbose") else "info",
+        )
 
 
 @cli.command()
@@ -108,7 +119,7 @@ async def _run_task(objective: str, max_iterations: int, strategy: str) -> None:
             routing_strategy=routing_strategy,
         )
 
-        def progress_callback(state_dict: dict) -> None:
+        async def progress_callback(state_dict: dict) -> None:
             current = state_dict.get("current_agent")
             iteration = state_dict.get("iteration", 0)
             if current:

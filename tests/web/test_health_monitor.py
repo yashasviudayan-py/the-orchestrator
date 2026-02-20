@@ -39,12 +39,21 @@ class TestHealthMonitor:
     @pytest.mark.asyncio
     async def test_check_research_agent_healthy(self, health_monitor):
         """Test Research Agent health check - healthy status."""
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.status = 200
 
-        with patch('aiohttp.ClientSession') as mock_session:
-            mock_session.return_value.__aenter__.return_value.get.return_value.__aenter__.return_value = mock_response
+        mock_get_cm = MagicMock()
+        mock_get_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_get_cm.__aexit__ = AsyncMock(return_value=False)
 
+        mock_session_instance = MagicMock()
+        mock_session_instance.get = MagicMock(return_value=mock_get_cm)
+
+        mock_session_cm = MagicMock()
+        mock_session_cm.__aenter__ = AsyncMock(return_value=mock_session_instance)
+        mock_session_cm.__aexit__ = AsyncMock(return_value=False)
+
+        with patch('src.web.health_monitor.aiohttp.ClientSession', return_value=mock_session_cm):
             status = await health_monitor.check_research_agent()
 
             assert status == AgentStatus.HEALTHY
@@ -52,9 +61,14 @@ class TestHealthMonitor:
     @pytest.mark.asyncio
     async def test_check_research_agent_down(self, health_monitor):
         """Test Research Agent health check - connection error."""
-        with patch('aiohttp.ClientSession') as mock_session:
-            mock_session.return_value.__aenter__.return_value.get.side_effect = Exception("Connection refused")
+        mock_session_instance = MagicMock()
+        mock_session_instance.get = MagicMock(side_effect=Exception("Connection refused"))
 
+        mock_session_cm = MagicMock()
+        mock_session_cm.__aenter__ = AsyncMock(return_value=mock_session_instance)
+        mock_session_cm.__aexit__ = AsyncMock(return_value=False)
+
+        with patch('src.web.health_monitor.aiohttp.ClientSession', return_value=mock_session_cm):
             status = await health_monitor.check_research_agent()
 
             assert status == AgentStatus.DOWN
@@ -87,7 +101,7 @@ class TestHealthMonitor:
         mock_path.is_dir.return_value = True
         mock_path.__truediv__.return_value.exists.return_value = True  # For file checks
 
-        with patch('pathlib.Path', return_value=mock_path):
+        with patch('src.web.health_monitor.Path', return_value=mock_path):
             status = await health_monitor.check_pr_agent()
 
             assert status == AgentStatus.HEALTHY
@@ -95,17 +109,24 @@ class TestHealthMonitor:
     @pytest.mark.asyncio
     async def test_check_ollama_healthy(self, health_monitor):
         """Test Ollama health check - healthy with model available."""
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.status = 200
         mock_response.json = AsyncMock(return_value={
-            "models": [
-                {"name": "llama3.1:8b-instruct-q8_0"},
-            ]
+            "models": [{"name": "llama3.1:8b-instruct-q8_0"}]
         })
 
-        with patch('aiohttp.ClientSession') as mock_session:
-            mock_session.return_value.__aenter__.return_value.get.return_value.__aenter__.return_value = mock_response
+        mock_get_cm = MagicMock()
+        mock_get_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_get_cm.__aexit__ = AsyncMock(return_value=False)
 
+        mock_session_instance = MagicMock()
+        mock_session_instance.get = MagicMock(return_value=mock_get_cm)
+
+        mock_session_cm = MagicMock()
+        mock_session_cm.__aenter__ = AsyncMock(return_value=mock_session_instance)
+        mock_session_cm.__aexit__ = AsyncMock(return_value=False)
+
+        with patch('src.web.health_monitor.aiohttp.ClientSession', return_value=mock_session_cm):
             status = await health_monitor.check_ollama()
 
             assert status == AgentStatus.HEALTHY
@@ -113,17 +134,24 @@ class TestHealthMonitor:
     @pytest.mark.asyncio
     async def test_check_ollama_degraded(self, health_monitor):
         """Test Ollama health check - server up but model missing."""
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.status = 200
         mock_response.json = AsyncMock(return_value={
-            "models": [
-                {"name": "different-model"},
-            ]
+            "models": [{"name": "different-model"}]
         })
 
-        with patch('aiohttp.ClientSession') as mock_session:
-            mock_session.return_value.__aenter__.return_value.get.return_value.__aenter__.return_value = mock_response
+        mock_get_cm = MagicMock()
+        mock_get_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_get_cm.__aexit__ = AsyncMock(return_value=False)
 
+        mock_session_instance = MagicMock()
+        mock_session_instance.get = MagicMock(return_value=mock_get_cm)
+
+        mock_session_cm = MagicMock()
+        mock_session_cm.__aenter__ = AsyncMock(return_value=mock_session_instance)
+        mock_session_cm.__aexit__ = AsyncMock(return_value=False)
+
+        with patch('src.web.health_monitor.aiohttp.ClientSession', return_value=mock_session_cm):
             status = await health_monitor.check_ollama()
 
             assert status == AgentStatus.DEGRADED
