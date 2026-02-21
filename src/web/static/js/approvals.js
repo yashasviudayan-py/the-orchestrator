@@ -244,19 +244,21 @@ function renderHistory(history) {
 
     elements.emptyHistory.classList.add('hidden');
 
-    elements.historyList.innerHTML = history.map(item => {
+    elements.historyList.innerHTML = history.map((item, index) => {
         const statusIcon = item.status === 'approved' ? '✓' : item.status === 'rejected' ? '✗' : '⏱';
         const statusClass = item.status === 'approved' ? 'success' : item.status === 'rejected' ? 'error' : 'warning';
         const decidedTime = item.decided_at ? new Date(item.decided_at).toLocaleString() : 'N/A';
+        const hasDetails = item.details && Object.keys(item.details).length > 0;
 
         return `
-            <div class="card mb-2" style="padding: 12px;">
+            <div class="card mb-2 history-item ${hasDetails ? 'clickable' : ''}" style="padding: 12px; ${hasDetails ? 'cursor: pointer;' : ''}" ${hasDetails ? `onclick="toggleHistoryDetails(${index})"` : ''}>
                 <div style="display: flex; justify-content: space-between; align-items: start;">
                     <div style="flex: 1;">
                         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
                             <span class="text-${statusClass}" style="font-size: 18px;">${statusIcon}</span>
                             <strong>${formatOperationType(item.operation_type)}</strong>
                             <span class="risk-badge ${item.risk_level}">${item.risk_level.toUpperCase()}</span>
+                            ${hasDetails ? '<span style="color: var(--text-dim); font-size: 11px; margin-left: 4px;">▶ click to expand</span>' : ''}
                         </div>
                         <div style="color: var(--text-secondary); font-size: 13px; margin-bottom: 4px;">
                             ${item.description}
@@ -271,9 +273,74 @@ function renderHistory(history) {
                         ${decidedTime}
                     </div>
                 </div>
+                <div id="history-details-${index}" class="history-details hidden">
+                    ${hasDetails ? renderHistoryDetails(item.details) : ''}
+                </div>
             </div>
         `;
     }).join('');
+}
+
+/**
+ * Toggle history item details
+ */
+window.toggleHistoryDetails = function(index) {
+    const details = document.getElementById(`history-details-${index}`);
+    if (!details) return;
+    details.classList.toggle('hidden');
+
+    // Update the expand hint
+    const item = details.closest('.history-item');
+    const hint = item ? item.querySelector('span[style*="11px"]') : null;
+    if (hint) {
+        hint.textContent = details.classList.contains('hidden') ? '▶ click to expand' : '▼ click to collapse';
+    }
+};
+
+/**
+ * Render history item details (including diff)
+ */
+function renderHistoryDetails(details) {
+    let html = '';
+
+    if (details.diff) {
+        const diffLines = details.diff.split('\n').map(line => {
+            const escaped = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            if (line.startsWith('+++') || line.startsWith('---')) {
+                return `<span style="color: var(--text-dim);">${escaped}</span>`;
+            } else if (line.startsWith('+')) {
+                return `<span style="color: #4ade80;">${escaped}</span>`;
+            } else if (line.startsWith('-')) {
+                return `<span style="color: #f87171;">${escaped}</span>`;
+            } else if (line.startsWith('@@')) {
+                return `<span style="color: #60a5fa;">${escaped}</span>`;
+            }
+            return escaped;
+        }).join('\n');
+
+        html += `
+            <div class="approval-diff-section" style="margin-top: 12px;">
+                <strong>Code Changes:</strong>
+                <pre class="diff-block">${diffLines}</pre>
+            </div>
+        `;
+    }
+
+    const otherDetails = Object.entries(details)
+        .filter(([key]) => key !== 'diff')
+        .map(([key, value]) => `<div>• ${key}: ${formatDetailValue(value)}</div>`)
+        .join('');
+
+    if (otherDetails) {
+        html += `
+            <div class="approval-details" style="margin-top: 8px;">
+                <strong>Details:</strong>
+                ${otherDetails}
+            </div>
+        `;
+    }
+
+    return html;
 }
 
 // ═══════════════════════════════════════════════════════════════════════

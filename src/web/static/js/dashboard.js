@@ -338,10 +338,44 @@ function connectStream(taskId, streamUrl) {
 
     es.addEventListener('approval_required', () => {
         setTyping(false);
+
+        // Prominent in-chat banner with blinking indicator
+        const banner = document.createElement('div');
+        banner.className = 'approval-banner';
+        banner.innerHTML = `
+            <div class="approval-banner-content">
+                <span class="approval-banner-pulse"></span>
+                <span><strong>Approval Required</strong> — Review the changes before they are committed</span>
+                <a href="/approvals" class="approval-banner-btn">Open Approvals →</a>
+            </div>
+        `;
+        el.chatMessages.appendChild(banner);
+        banner.scrollIntoView({ behavior: 'smooth', block: 'end' });
+
+        // Also add the regular chat message
         addChatMessage('⚠️ Approval required — check <a href="/approvals" style="color:var(--warning);">Approvals</a>', 'system', 'warning');
+
+        // Browser notification
         if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('Approval Required', { body: 'An operation needs your approval' });
+            new Notification('⚠️ Approval Required', {
+                body: 'PR-Agent needs your review before committing. Click to open approvals.',
+                requireInteraction: true,
+            });
         }
+
+        // Play a sound to grab attention
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.frequency.value = 880;
+            gain.gain.value = 0.15;
+            osc.start();
+            osc.stop(ctx.currentTime + 0.15);
+            setTimeout(() => { osc.frequency.value = 1100; const o2 = ctx.createOscillator(); o2.connect(gain); o2.frequency.value = 1100; o2.start(); o2.stop(ctx.currentTime + 0.15); }, 200);
+        } catch (e) { /* audio not available */ }
     });
 
     es.addEventListener('approval_decided', e => {

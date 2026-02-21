@@ -451,6 +451,7 @@ async def get_approval_history(
             "description": req.description,
             "status": req.status.value,
             "decision_note": req.decision_note,
+            "details": req.details,
         }
         for req in history
     ]

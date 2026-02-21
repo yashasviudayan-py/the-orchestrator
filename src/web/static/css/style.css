@@ -573,6 +573,17 @@ body {
     color: var(--text-secondary);
 }
 
+.history-item.clickable:hover {
+    border-color: var(--border-hover);
+    background: var(--bg-hover);
+}
+
+.history-details {
+    border-top: 1px solid var(--border);
+    margin-top: 12px;
+    padding-top: 12px;
+}
+
 .approval-diff-section {
     margin-bottom: var(--spacing-md);
 }
@@ -1325,6 +1336,64 @@ body {
     padding: 0 14px;
     border-radius: 10px;
     font-size: 13px;
+}
+
+/* Approval notification banner in chat */
+.approval-banner {
+    align-self: stretch;
+    background: rgba(255, 170, 0, 0.1);
+    border: 2px solid var(--warning);
+    border-radius: var(--radius-md);
+    padding: 16px 20px;
+    animation: banner-appear 0.3s ease, banner-glow 2s ease-in-out infinite;
+}
+
+@keyframes banner-appear {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes banner-glow {
+    0%, 100% { box-shadow: 0 0 8px rgba(255, 170, 0, 0.2); }
+    50%      { box-shadow: 0 0 20px rgba(255, 170, 0, 0.4); }
+}
+
+.approval-banner-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.approval-banner-pulse {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--warning);
+    box-shadow: 0 0 8px var(--warning);
+    animation: pulse 1.5s ease-in-out infinite;
+    flex-shrink: 0;
+}
+
+.approval-banner-content span {
+    color: var(--text-primary);
+    font-size: 14px;
+}
+
+.approval-banner-btn {
+    margin-left: auto;
+    padding: 8px 18px;
+    background: var(--warning);
+    color: var(--bg-primary);
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 13px;
+    transition: var(--transition);
+}
+
+.approval-banner-btn:hover {
+    opacity: 0.85;
 }
 
 @media (max-width: 768px) {
