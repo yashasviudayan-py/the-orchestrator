@@ -186,16 +186,48 @@ function renderApprovalDetails(approval) {
         return '';
     }
 
-    const detailsHtml = Object.entries(approval.details)
+    let html = '';
+
+    // Render diff block if present
+    if (approval.details.diff) {
+        const diffLines = approval.details.diff.split('\n').map(line => {
+            const escaped = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            if (line.startsWith('+++') || line.startsWith('---')) {
+                return `<span style="color: var(--text-dim);">${escaped}</span>`;
+            } else if (line.startsWith('+')) {
+                return `<span style="color: #4ade80;">${escaped}</span>`;
+            } else if (line.startsWith('-')) {
+                return `<span style="color: #f87171;">${escaped}</span>`;
+            } else if (line.startsWith('@@')) {
+                return `<span style="color: #60a5fa;">${escaped}</span>`;
+            }
+            return escaped;
+        }).join('\n');
+
+        html += `
+            <div class="approval-diff-section">
+                <strong>Code Changes:</strong>
+                <pre class="diff-block">${diffLines}</pre>
+            </div>
+        `;
+    }
+
+    // Render other details (skip diff key)
+    const otherDetails = Object.entries(approval.details)
+        .filter(([key]) => key !== 'diff')
         .map(([key, value]) => `<div>• ${key}: ${formatDetailValue(value)}</div>`)
         .join('');
 
-    return `
-        <div class="approval-details">
-            <strong>Details:</strong>
-            ${detailsHtml}
-        </div>
-    `;
+    if (otherDetails) {
+        html += `
+            <div class="approval-details">
+                <strong>Details:</strong>
+                ${otherDetails}
+            </div>
+        `;
+    }
+
+    return html;
 }
 
 /**

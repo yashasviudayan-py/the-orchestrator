@@ -8,7 +8,7 @@ import logging
 from typing import Optional, Callable, Any
 from functools import wraps
 
-from ..state.schemas import TaskState, AgentType, MessageType
+from ..state.schemas import TaskState, AgentType, MessageType, PRResult
 from ..api.approval import OperationType, RiskLevel
 from ..api.approval_manager import ApprovalManager, ApprovalTimeout, get_approval_manager
 
@@ -203,7 +203,11 @@ class HITLEnhancedNodes:
 
     async def call_pr_agent(self, state: dict) -> dict:
         """
-        Call PR agent (MEDIUM/HIGH risk - requires approval).
+        Call PR agent with two-phase flow:
+        1. Generate preview (diff) without committing
+        2. Show diff to user for approval
+        3. On approve: commit, push, create PR
+        4. On reject: clean up branch
 
         Args:
             state: Task state dict
@@ -213,8 +217,33 @@ class HITLEnhancedNodes:
         """
         task_state = TaskState(**state)
 
-        # PR operations are risky - require approval
-        description = f"Execute PR-Agent to write code and create pull request for: {task_state.objective}"
+        # Build PR input from task state
+        pr_input = {
+            "title": task_state.objective,
+            "body": self._build_pr_body(task_state),
+            "repo_path": task_state.user_context.get("repo_path", "."),
+        }
+
+        # Phase 1: Generate preview (no commit)
+        logger.info("PR-Agent Phase 1: Generating preview...")
+        pr_agent = self.base_nodes.pr_agent
+        preview = await pr_agent.generate_preview(pr_input)
+
+        if not preview.get("success"):
+            error_msg = preview.get("error", "Unknown generate error")
+            logger.error(f"PR-Agent generate failed: {error_msg}")
+            task_state.add_error(f"PR-Agent generate failed: {error_msg}")
+            task_state.next_agent = None
+            return task_state.model_dump()
+
+        diff_text = preview.get("diff", "")
+        branch_name = preview.get("branch_name")
+        target_file = preview.get("target_file")
+        files_changed = preview.get("files_changed", [])
+        repo_path = pr_input["repo_path"]
+
+        # Phase 2: Request approval with diff
+        description = f"Review code changes and create pull request for: {task_state.objective}"
 
         try:
             approved = await self.hitl_gate.check_approval(
@@ -222,27 +251,67 @@ class HITLEnhancedNodes:
                 description=description,
                 task_state=task_state,
                 details={
+                    "diff": diff_text,
+                    "branch_name": branch_name,
+                    "target_file": target_file,
+                    "files_changed": files_changed,
                     "objective": task_state.objective,
-                    "research_results": bool(task_state.research_results),
-                    "context_results": bool(task_state.context_results),
                 },
             )
 
             if not approved:
-                logger.warning("PR-Agent operation rejected by user")
-                task_state.add_error("PR-Agent execution rejected by user")
+                logger.warning("PR-Agent diff rejected by user — cleaning up")
+                await pr_agent.cleanup_branch(repo_path, branch_name, target_file)
+                task_state.add_error("PR changes rejected by user")
                 task_state.next_agent = None
                 return task_state.model_dump()
 
-            # Approved - execute PR agent
-            logger.info("PR-Agent operation approved - executing")
-            return await self.base_nodes.call_pr_agent(task_state.model_dump())
-
         except ApprovalTimeout:
-            logger.error("PR-Agent approval timeout")
+            logger.error("PR-Agent approval timeout — cleaning up")
+            await pr_agent.cleanup_branch(repo_path, branch_name, target_file)
             task_state.add_error("PR-Agent approval timeout")
             task_state.next_agent = None
             return task_state.model_dump()
+
+        # Phase 3: Commit and push (approved)
+        logger.info("PR-Agent Phase 2: Committing and pushing...")
+        try:
+            commit_input = {
+                **pr_input,
+                "branch_name": branch_name,
+                "target_file": target_file,
+            }
+            result = await pr_agent.commit_and_push(commit_input)
+
+            task_state.pr_results = PRResult(**result)
+
+            task_state.add_message(
+                AgentType.PR,
+                MessageType.RESPONSE,
+                content={
+                    "result": "PR created" if result.get("success") else "PR failed",
+                    "pr_url": result.get("pr_url"),
+                    "branch": result.get("branch_name"),
+                    "files": result.get("files_changed", []),
+                },
+            )
+
+            return task_state.model_dump()
+
+        except Exception as e:
+            logger.error(f"PR-Agent commit failed: {e}")
+            task_state.add_error(f"PR-Agent commit failed: {str(e)}")
+            task_state.next_agent = None
+            return task_state.model_dump()
+
+    def _build_pr_body(self, task_state: TaskState) -> str:
+        """Build PR description from task state."""
+        parts = [task_state.objective]
+        if task_state.research_results and task_state.research_results.summary:
+            parts.append(f"\n## Research\n{task_state.research_results.summary}")
+        if task_state.context_results and task_state.context_results.summary:
+            parts.append(f"\n## Context\n{task_state.context_results.summary}")
+        return "\n".join(parts)
 
     async def finalize(self, state: dict) -> dict:
         """

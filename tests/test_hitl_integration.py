@@ -157,6 +157,12 @@ class TestHITLEnhancedNodes:
         nodes.call_context_agent = AsyncMock()
         nodes.call_pr_agent = AsyncMock()
         nodes.finalize = AsyncMock()
+
+        # PR agent interface for two-phase flow
+        nodes.pr_agent = Mock()
+        nodes.pr_agent.generate_preview = AsyncMock()
+        nodes.pr_agent.commit_and_push = AsyncMock()
+        nodes.pr_agent.cleanup_branch = AsyncMock()
         return nodes
 
     @pytest.fixture
@@ -214,31 +220,62 @@ class TestHITLEnhancedNodes:
     async def test_call_pr_agent_approved(
         self, enhanced_nodes, mock_base_nodes, mock_hitl_gate, task_state_dict
     ):
-        """Test PR agent with approval."""
-        # Mock approval
+        """Test PR agent two-phase flow with approval."""
+        # Phase 1: generate_preview succeeds
+        mock_base_nodes.pr_agent.generate_preview.return_value = {
+            "diff": "+added line\n-removed line",
+            "branch_name": "fix-main",
+            "target_file": "main.py",
+            "files_changed": ["main.py"],
+            "success": True,
+            "error": None,
+        }
+        # Phase 2: approval granted
         mock_hitl_gate.check_approval.return_value = True
-        mock_base_nodes.call_pr_agent.return_value = task_state_dict
+        # Phase 3: commit succeeds
+        mock_base_nodes.pr_agent.commit_and_push.return_value = {
+            "title": "Test objective",
+            "pr_url": "https://github.com/test/repo/pull/1",
+            "branch_name": "fix-main",
+            "files_changed": ["main.py"],
+            "success": True,
+            "error": None,
+        }
 
         result = await enhanced_nodes.call_pr_agent(task_state_dict)
 
-        assert result == task_state_dict
+        mock_base_nodes.pr_agent.generate_preview.assert_called_once()
         mock_hitl_gate.check_approval.assert_called_once()
-        mock_base_nodes.call_pr_agent.assert_called_once()
+        mock_base_nodes.pr_agent.commit_and_push.assert_called_once()
+
+        result_state = TaskState(**result)
+        assert result_state.pr_results is not None
+        assert result_state.pr_results.success is True
 
     @pytest.mark.asyncio
     async def test_call_pr_agent_rejected(
         self, enhanced_nodes, mock_base_nodes, mock_hitl_gate, task_state_dict
     ):
-        """Test PR agent with rejection."""
-        # Mock rejection
+        """Test PR agent two-phase flow with rejection."""
+        # Phase 1: generate_preview succeeds
+        mock_base_nodes.pr_agent.generate_preview.return_value = {
+            "diff": "+added line",
+            "branch_name": "fix-main",
+            "target_file": "main.py",
+            "files_changed": ["main.py"],
+            "success": True,
+            "error": None,
+        }
+        # Phase 2: approval rejected
         mock_hitl_gate.check_approval.return_value = False
 
         result = await enhanced_nodes.call_pr_agent(task_state_dict)
 
-        # Should not call PR agent
-        mock_base_nodes.call_pr_agent.assert_not_called()
+        # Should not commit
+        mock_base_nodes.pr_agent.commit_and_push.assert_not_called()
+        # Should clean up
+        mock_base_nodes.pr_agent.cleanup_branch.assert_called_once()
 
-        # Check error added and workflow stopped
         result_state = TaskState(**result)
         assert len(result_state.errors) > 0
         assert result_state.next_agent is None
@@ -247,19 +284,53 @@ class TestHITLEnhancedNodes:
     async def test_call_pr_agent_timeout(
         self, enhanced_nodes, mock_base_nodes, mock_hitl_gate, task_state_dict
     ):
-        """Test PR agent with approval timeout."""
-        # Mock timeout
+        """Test PR agent two-phase flow with approval timeout."""
+        # Phase 1: generate_preview succeeds
+        mock_base_nodes.pr_agent.generate_preview.return_value = {
+            "diff": "+added line",
+            "branch_name": "fix-main",
+            "target_file": "main.py",
+            "files_changed": ["main.py"],
+            "success": True,
+            "error": None,
+        }
+        # Phase 2: approval times out
         mock_hitl_gate.check_approval.side_effect = ApprovalTimeout("Timeout")
 
         result = await enhanced_nodes.call_pr_agent(task_state_dict)
 
-        # Should not call PR agent
-        mock_base_nodes.call_pr_agent.assert_not_called()
+        # Should not commit
+        mock_base_nodes.pr_agent.commit_and_push.assert_not_called()
+        # Should clean up
+        mock_base_nodes.pr_agent.cleanup_branch.assert_called_once()
 
-        # Check error and stopped workflow
         result_state = TaskState(**result)
         assert len(result_state.errors) > 0
         assert "timeout" in result_state.errors[0].lower()
+        assert result_state.next_agent is None
+
+    @pytest.mark.asyncio
+    async def test_call_pr_agent_generate_fails(
+        self, enhanced_nodes, mock_base_nodes, mock_hitl_gate, task_state_dict
+    ):
+        """Test PR agent when generate phase fails."""
+        mock_base_nodes.pr_agent.generate_preview.return_value = {
+            "diff": None,
+            "branch_name": None,
+            "target_file": None,
+            "files_changed": [],
+            "success": False,
+            "error": "No target file found",
+        }
+
+        result = await enhanced_nodes.call_pr_agent(task_state_dict)
+
+        # Should not request approval or commit
+        mock_hitl_gate.check_approval.assert_not_called()
+        mock_base_nodes.pr_agent.commit_and_push.assert_not_called()
+
+        result_state = TaskState(**result)
+        assert len(result_state.errors) > 0
         assert result_state.next_agent is None
 
     @pytest.mark.asyncio

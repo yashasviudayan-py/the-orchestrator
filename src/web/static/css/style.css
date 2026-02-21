@@ -573,6 +573,30 @@ body {
     color: var(--text-secondary);
 }
 
+.approval-diff-section {
+    margin-bottom: var(--spacing-md);
+}
+
+.diff-block {
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: var(--spacing-md);
+    margin-top: var(--spacing-sm);
+    font-family: 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: 400px;
+    white-space: pre;
+    color: var(--text-secondary);
+}
+
+[data-theme="light"] .diff-block {
+    background: #f6f8fa;
+}
+
 .approval-actions {
     display: flex;
     gap: var(--spacing-sm);
@@ -1229,6 +1253,34 @@ body {
     border-top: 1px solid var(--border);
     background: var(--bg-secondary);
     flex-shrink: 0;
+}
+
+.chat-settings-row {
+    max-width: 860px;
+    margin: 0 auto 8px;
+}
+
+.repo-path-input {
+    width: 100%;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: var(--text-secondary);
+    font-family: 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    transition: var(--transition);
+}
+
+.repo-path-input:focus {
+    outline: none;
+    border-color: var(--info);
+    color: var(--text-primary);
+}
+
+.repo-path-input::placeholder {
+    color: var(--text-dim);
+    font-family: inherit;
 }
 
 .chat-input-row {

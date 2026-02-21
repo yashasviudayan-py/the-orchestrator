@@ -38,6 +38,7 @@ const state = {
 
 const el = {
     taskInput:    document.getElementById('task-input'),
+    repoPathInput: document.getElementById('repo-path-input'),
     submitBtn:    document.getElementById('submit-btn'),
     stopBtn:      document.getElementById('stop-btn'),
     chatMessages: document.getElementById('chat-messages'),
@@ -64,11 +65,13 @@ const api = {
      * agent tasks → orchestration pipeline task.
      * Returns {type:"chat"|"task", stream_url, task_id?}
      */
-    async chat(message) {
+    async chat(message, repoPath) {
+        const payload = { message };
+        if (repoPath) payload.repo_path = repoPath;
         const r = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message }),
+            body: JSON.stringify(payload),
         });
         if (!r.ok) { const e = await r.json(); throw new Error(e.detail || 'Failed'); }
         return r.json();
@@ -467,7 +470,8 @@ el.submitBtn.addEventListener('click', async () => {
         el.submitBtn.disabled = true;
 
         // Use smart chat router — handles both conversational and agent tasks
-        const response = await api.chat(objective);
+        const repoPath = el.repoPathInput ? el.repoPathInput.value.trim() : '';
+        const response = await api.chat(objective, repoPath);
 
         // Only clear chat when leaving a historical session view
         if (state.isViewingHistory) {

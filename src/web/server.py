@@ -87,6 +87,7 @@ def _is_conversational_msg(text: str) -> bool:
 
 class ChatRequest(BaseModel):
     message: str
+    repo_path: Optional[str] = None
 
 
 # In-memory store for pending chat sessions (chat_id -> message)
@@ -623,8 +624,12 @@ async def chat_route(request: ChatRequest):
 
     # Agent task → create task as usual
     task_manager = get_task_manager()
+    user_context = {}
+    if request.repo_path and request.repo_path.strip():
+        user_context["repo_path"] = request.repo_path.strip()
     task_request = TaskRequest(
         objective=message,
+        user_context=user_context,
         max_iterations=10,
         routing_strategy="adaptive",
         enable_hitl=True,
