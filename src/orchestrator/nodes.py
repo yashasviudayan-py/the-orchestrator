@@ -554,6 +554,36 @@ Answer:"""
 
             task_state.complete(final_output)
 
+            # ── Persist task result to Context Core vault ──────────────
+            try:
+                import sys
+                from pathlib import Path as _Path
+                from dotenv import load_dotenv as _load
+                import os as _os
+                _load()
+                _cc_path = _Path(_os.getenv("CONTEXT_CORE_PATH", ""))
+                _src = str(_cc_path / "src")
+                if _src not in sys.path:
+                    sys.path.insert(0, _src)
+                from context_core.vault import Vault as _Vault
+                from context_core.ingest import create_manual_document as _make_doc
+                _vault = _Vault()
+                _content = (
+                    f"# Task: {task_state.objective}\n\n"
+                    f"**Task ID:** {task_state.task_id}\n\n"
+                    f"{final_output}"
+                )
+                _doc = _make_doc(
+                    _content,
+                    tags=["task_result", task_state.task_id],
+                    source_type="task_result",
+                )
+                _vault.add(_doc)
+                logger.info(f"Task result saved to Context Core vault: {task_state.task_id}")
+            except Exception as _ve:
+                logger.warning(f"Could not save task result to vault: {_ve}")
+            # ───────────────────────────────────────────────────────────
+
             logger.info("Task finalized successfully")
 
         except Exception as e:

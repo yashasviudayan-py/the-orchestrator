@@ -8,9 +8,13 @@ into a single web interface.
 import asyncio
 import json
 import logging
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
+
+import httpx
+from pydantic import BaseModel
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse, HTMLResponse
@@ -41,6 +45,54 @@ from .process_manager import get_process_manager, ServiceNotControllableError
 from ..state.schemas import TaskStatus
 
 logger = logging.getLogger(__name__)
+
+# ═══════════════════════════════════════════════════════════════════════
+# Conversational routing helpers
+# ═══════════════════════════════════════════════════════════════════════
+
+_CONVERSATIONAL_EXACT = {
+    'hi', 'hey', 'hello', 'howdy', 'sup', 'yo', 'hiya',
+    'thanks', 'thank you', 'thx', 'ty', 'thank u',
+    'bye', 'goodbye', 'cya', 'see you', 'later',
+    'ok', 'okay', 'k', 'cool', 'got it', 'nice', 'great',
+    'awesome', 'perfect', 'sounds good', 'alright',
+    'lol', 'haha', 'hehe', ':)', '👍',
+    'good morning', 'good night', 'good evening', 'good afternoon',
+    'how are you', 'how r u', "what's up", 'whats up',
+    'who are you', 'what are you', 'what can you do',
+}
+_TASK_WORDS = {
+    'fix', 'add', 'create', 'implement', 'build', 'write', 'debug',
+    'update', 'delete', 'remove', 'test', 'deploy', 'refactor',
+    'install', 'setup', 'configure', 'migrate', 'generate', 'push',
+    'commit', 'pr', 'pull', 'merge', 'branch', 'diff', 'review',
+    'research', 'find', 'search', 'analyze', 'analyse', 'explain',
+    'show', 'list', 'get', 'fetch', 'run', 'execute', 'start',
+}
+
+
+def _is_conversational_msg(text: str) -> bool:
+    """Return True if the message is conversational and needs no agents."""
+    t = text.strip().lower().rstrip('!?.,')
+    if t in _CONVERSATIONAL_EXACT:
+        return True
+    for p in _CONVERSATIONAL_EXACT:
+        if t == p or t.startswith(p + ' '):
+            return True
+    words = t.split()
+    if len(words) <= 3 and not any(w in _TASK_WORDS for w in words):
+        return True
+    return False
+
+
+class ChatRequest(BaseModel):
+    message: str
+
+
+# In-memory store for pending chat sessions (chat_id -> message)
+# Small enough to not need TTL — entries are consumed on first stream connect
+_pending_chats: dict[str, str] = {}
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # Paths
@@ -540,6 +592,117 @@ async def stop_service(service: str):
     except Exception as e:
         logger.error(f"Failed to stop {service}: {e}", exc_info=True)
         raise HTTPException(500, f"Failed to stop {service}: {str(e)}")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Chat API  (conversational bypass — no task created for simple chat)
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.post("/api/chat")
+async def chat_route(request: ChatRequest):
+    """
+    Smart chat router.
+
+    Conversational messages (greetings, short questions) are answered
+    directly by Ollama without creating a task.  Agent tasks (fix, build,
+    research, etc.) are routed through the normal orchestration pipeline.
+
+    Returns:
+        {"type": "chat",  "stream_url": "/api/chat/{id}/stream"}  — direct LLM
+        {"type": "task",  "task_id": ..., "stream_url": "/api/tasks/{id}/stream"}
+    """
+    message = request.message.strip()
+    if not message:
+        raise HTTPException(400, "Message cannot be empty")
+
+    if _is_conversational_msg(message):
+        chat_id = str(uuid.uuid4())
+        _pending_chats[chat_id] = message
+        logger.info(f"Chat (conversational): {message[:60]}")
+        return {"type": "chat", "stream_url": f"/api/chat/{chat_id}/stream"}
+
+    # Agent task → create task as usual
+    task_manager = get_task_manager()
+    task_request = TaskRequest(
+        objective=message,
+        max_iterations=10,
+        routing_strategy="adaptive",
+        enable_hitl=True,
+    )
+    try:
+        task_state = await task_manager.start_task(task_request)
+        logger.info(f"Chat (task): {message[:60]} → {task_state.task_id}")
+        return {
+            "type": "task",
+            "task_id": task_state.task_id,
+            "stream_url": f"/api/tasks/{task_state.task_id}/stream",
+        }
+    except Exception as e:
+        logger.error(f"Failed to create task from chat: {e}", exc_info=True)
+        raise HTTPException(500, f"Failed to start task: {str(e)}")
+
+
+@app.get("/api/chat/{chat_id}/stream")
+async def chat_stream(chat_id: str):
+    """
+    Stream a direct Ollama response for a conversational message.
+    Emits SSE events:  chat_token  (each token),  chat_complete  (done),  error.
+    """
+    message = _pending_chats.pop(chat_id, None)
+    if message is None:
+        raise HTTPException(404, "Chat session not found or already consumed")
+
+    settings = get_cached_settings()
+
+    async def generate():
+        try:
+            payload = {
+                "model": settings.ollama_model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are The Orchestrator, a friendly AI assistant "
+                            "for software project management. Be concise and helpful. "
+                            "For greetings, respond warmly in 1-2 sentences."
+                        ),
+                    },
+                    {"role": "user", "content": message},
+                ],
+                "stream": True,
+            }
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                async with client.stream(
+                    "POST",
+                    f"{settings.ollama_base_url}/api/chat",
+                    json=payload,
+                ) as resp:
+                    async for line in resp.aiter_lines():
+                        if not line:
+                            continue
+                        try:
+                            data = json.loads(line)
+                            token = data.get("message", {}).get("content", "")
+                            if token:
+                                yield f"event: chat_token\ndata: {json.dumps({'token': token})}\n\n"
+                            if data.get("done"):
+                                break
+                        except json.JSONDecodeError:
+                            continue
+            yield f"event: chat_complete\ndata: {{}}\n\n"
+        except Exception as e:
+            logger.error(f"Chat stream error for {chat_id}: {e}")
+            yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════

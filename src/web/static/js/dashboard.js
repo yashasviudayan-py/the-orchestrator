@@ -49,7 +49,9 @@ const el = {
     headerAgent:  document.getElementById('header-agent'),
     headerIter:   document.getElementById('header-iter'),
     headerTyping: document.getElementById('header-typing'),
-    newChatBtn:   document.getElementById('new-chat-btn'),
+    newChatBtn:       document.getElementById('new-chat-btn'),
+    chatSidebar:      document.getElementById('chat-sidebar'),
+    sidebarToggleBtn: document.getElementById('sidebar-toggle-btn'),
 };
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -57,6 +59,21 @@ const el = {
 // ═══════════════════════════════════════════════════════════════════════
 
 const api = {
+    /**
+     * Smart chat: conversational → direct Ollama stream (no task),
+     * agent tasks → orchestration pipeline task.
+     * Returns {type:"chat"|"task", stream_url, task_id?}
+     */
+    async chat(message) {
+        const r = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message }),
+        });
+        if (!r.ok) { const e = await r.json(); throw new Error(e.detail || 'Failed'); }
+        return r.json();
+    },
+
     async startTask(objective) {
         const r = await fetch('/api/tasks', {
             method: 'POST',
@@ -379,6 +396,65 @@ function resetInput() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// Direct Ollama chat stream (conversational, no task created)
+// ═══════════════════════════════════════════════════════════════════════
+
+function connectChatStream(streamUrl) {
+    if (state.eventSource) state.eventSource.close();
+
+    setTyping(true);
+    hideStatusBar();
+
+    // Create a streaming output div that builds up token by token
+    hideEmpty();
+    const div = document.createElement('div');
+    div.className = 'chat-output chat-output-streaming';
+    el.chatMessages.appendChild(div);
+    div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+
+    let buffer = '';
+
+    const es = new EventSource(streamUrl);
+    state.eventSource = es;
+
+    es.addEventListener('chat_token', e => {
+        const d = JSON.parse(e.data);
+        buffer += d.token;
+        div.innerHTML = renderMarkdown(buffer);
+        div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    });
+
+    es.addEventListener('chat_complete', () => {
+        setTyping(false);
+        div.classList.remove('chat-output-streaming');
+        resetInput();
+        es.close();
+        state.eventSource = null;
+    });
+
+    es.addEventListener('error', e => {
+        setTyping(false);
+        if (e.data) {
+            try {
+                const d = JSON.parse(e.data);
+                addChatMessage(`Error: ${escapeHtml(d.error || 'Unknown error')}`, 'system', 'error');
+            } catch {}
+        }
+        resetInput();
+        es.close();
+        state.eventSource = null;
+    });
+
+    es.onerror = () => {
+        if (es.readyState === EventSource.CLOSED) {
+            setTyping(false);
+            resetInput();
+            state.eventSource = null;
+        }
+    };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // Event listeners
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -390,13 +466,13 @@ el.submitBtn.addEventListener('click', async () => {
         el.submitBtn.innerHTML = '<span class="spinner"></span>';
         el.submitBtn.disabled = true;
 
-        const response = await api.startTask(objective);
+        // Use smart chat router — handles both conversational and agent tasks
+        const response = await api.chat(objective);
 
-        // Only clear if user was reviewing a past session — otherwise keep the thread going
+        // Only clear chat when leaving a historical session view
         if (state.isViewingHistory) {
             el.chatMessages.innerHTML = '';
             if (el.chatEmpty) el.chatEmpty.style.display = 'none';
-            // Set title to this new message
             if (el.sessionTitle) {
                 el.sessionTitle.textContent = objective.length > 60 ? objective.slice(0, 60) + '…' : objective;
             }
@@ -405,25 +481,29 @@ el.submitBtn.addEventListener('click', async () => {
         }
 
         state.isViewingHistory = false;
-        state.activeSessionId = response.task_id;
 
-        // Show user bubble
+        // Show user bubble and clear input
         addUserBubble(objective);
         el.taskInput.value = '';
         el.taskInput.style.height = '';
 
-        // Show status pills
-        showStatusBar();
-        setHeaderStatus('running');
-        setHeaderAgent('—');
-        setHeaderIter(0);
-
-        connectStream(response.task_id, response.stream_url);
-        loadSessions();
+        if (response.type === 'chat') {
+            // Conversational — direct Ollama stream, no task, no status bar
+            connectChatStream(response.stream_url);
+        } else {
+            // Agent task — use existing task SSE pipeline
+            state.activeSessionId = response.task_id;
+            showStatusBar();
+            setHeaderStatus('running');
+            setHeaderAgent('—');
+            setHeaderIter(0);
+            connectStream(response.task_id, response.stream_url);
+            loadSessions();
+        }
 
     } catch (err) {
         resetInput();
-        addChatMessage(`Failed to start: ${escapeHtml(err.message)}`, 'system', 'error');
+        addChatMessage(`Failed: ${escapeHtml(err.message)}`, 'system', 'error');
     }
 });
 
@@ -463,6 +543,17 @@ el.newChatBtn.addEventListener('click', () => {
 
     document.querySelectorAll('.session-item').forEach(s => s.classList.remove('active'));
 });
+
+// Sidebar toggle
+el.sidebarToggleBtn.addEventListener('click', () => {
+    const collapsed = el.chatSidebar.classList.toggle('collapsed');
+    localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0');
+});
+
+// Restore sidebar state on load
+if (localStorage.getItem('sidebarCollapsed') === '1') {
+    el.chatSidebar.classList.add('collapsed');
+}
 
 // Auto-resize textarea
 el.taskInput.addEventListener('input', () => {
