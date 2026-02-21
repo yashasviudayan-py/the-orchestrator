@@ -207,7 +207,7 @@ class TestHTMLPages:
         """Test dashboard page renders."""
         response = client.get("/")
         assert response.status_code == 200
-        assert b"Command Center" in response.content
+        assert b"The Orchestrator" in response.content
 
     def test_approvals_page(self, client):
         """Test approvals page renders."""

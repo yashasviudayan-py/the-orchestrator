@@ -116,7 +116,7 @@ class HealthMonitor:
             return AgentStatus.DOWN
 
     async def check_pr_agent(self) -> AgentStatus:
-        """Check if PR-Agent path is accessible."""
+        """Check if PR-Agent path is accessible and dependencies are available."""
         try:
             path = Path(self.settings.pr_agent_path)
 
@@ -133,12 +133,42 @@ class HealthMonitor:
             expected_files = ["__init__.py", "main.py", "agent.py"]
             found_files = any((path / f).exists() for f in expected_files)
 
-            if found_files:
-                logger.debug("PR-Agent: HEALTHY (path accessible)")
-                return AgentStatus.HEALTHY
-            else:
+            if not found_files:
                 logger.warning("PR-Agent: Path exists but missing expected files")
                 return AgentStatus.DEGRADED
+
+            # Verify git CLI is available
+            try:
+                git_proc = await asyncio.create_subprocess_exec(
+                    "git", "--version",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await git_proc.communicate()
+                if git_proc.returncode != 0:
+                    logger.warning("PR-Agent: git CLI not available")
+                    return AgentStatus.DEGRADED
+            except FileNotFoundError:
+                logger.warning("PR-Agent: git CLI not installed")
+                return AgentStatus.DEGRADED
+
+            # Verify gh CLI is available
+            try:
+                gh_proc = await asyncio.create_subprocess_exec(
+                    "gh", "auth", "status",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await gh_proc.communicate()
+                if gh_proc.returncode != 0:
+                    logger.warning("PR-Agent: GitHub CLI not authenticated")
+                    return AgentStatus.DEGRADED
+            except FileNotFoundError:
+                logger.warning("PR-Agent: GitHub CLI (gh) not installed")
+                return AgentStatus.DEGRADED
+
+            logger.debug("PR-Agent: HEALTHY (path, git, and gh all accessible)")
+            return AgentStatus.HEALTHY
 
         except Exception as e:
             logger.error(f"PR-Agent health check failed: {e}")
