@@ -52,6 +52,29 @@ class ApprovalManager:
         # Event for async waiting
         self._events: Dict[str, asyncio.Event] = {}
 
+        # Callbacks for external notifications (e.g. SSE events)
+        # on_request_created(request: ApprovalRequest) - called when a new approval is pending
+        # on_request_decided(request: ApprovalRequest) - called when approved/rejected
+        self._on_request_created: Optional[callable] = None
+        self._on_request_decided: Optional[callable] = None
+
+    def set_callbacks(
+        self,
+        on_request_created: Optional[callable] = None,
+        on_request_decided: Optional[callable] = None,
+    ) -> None:
+        """
+        Set callbacks for approval lifecycle events.
+
+        Args:
+            on_request_created: Called when a new approval request is created
+            on_request_decided: Called when a request is approved or rejected
+        """
+        if on_request_created is not None:
+            self._on_request_created = on_request_created
+        if on_request_decided is not None:
+            self._on_request_decided = on_request_decided
+
     async def request_approval(
         self,
         operation_type: OperationType,
@@ -108,6 +131,15 @@ class ApprovalManager:
             f"Approval requested: {operation_type.value} - {description} "
             f"(risk: {request.risk_level.value}, timeout: {request.timeout_seconds}s)"
         )
+
+        # Notify external listeners (e.g. SSE stream) that approval is needed
+        if self._on_request_created:
+            try:
+                result = self._on_request_created(request)
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception as cb_err:
+                logger.warning(f"on_request_created callback error: {cb_err}")
 
         try:
             # Wait for approval with timeout
@@ -183,6 +215,15 @@ class ApprovalManager:
         if request_id in self._events:
             self._events[request_id].set()
 
+        # Notify external listeners
+        if self._on_request_decided:
+            try:
+                result = self._on_request_decided(request)
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception as cb_err:
+                logger.warning(f"on_request_decided callback error: {cb_err}")
+
         logger.info(f"Approved request {request_id}")
 
         return True
@@ -215,6 +256,15 @@ class ApprovalManager:
         # Signal waiting coroutine
         if request_id in self._events:
             self._events[request_id].set()
+
+        # Notify external listeners
+        if self._on_request_decided:
+            try:
+                result = self._on_request_decided(request)
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception as cb_err:
+                logger.warning(f"on_request_decided callback error: {cb_err}")
 
         logger.info(f"Rejected request {request_id}: {note or 'No reason'}")
 

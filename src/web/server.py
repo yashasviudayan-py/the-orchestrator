@@ -407,12 +407,17 @@ async def get_pending_approvals():
     ]
 
 
+class ApprovalNoteBody(BaseModel):
+    note: str = ""
+
+
 @app.post("/api/approvals/{request_id}/approve")
-async def approve_request(request_id: str, note: str = ""):
+async def approve_request(request_id: str, body: ApprovalNoteBody = None):
     """Approve a pending approval request."""
     approval_manager = get_approval_manager()
+    note = (body.note if body else "") or None
 
-    success = await approval_manager.approve(request_id, note or None)
+    success = await approval_manager.approve(request_id, note)
 
     if not success:
         raise HTTPException(404, "Approval request not found")
@@ -421,11 +426,12 @@ async def approve_request(request_id: str, note: str = ""):
 
 
 @app.post("/api/approvals/{request_id}/reject")
-async def reject_request(request_id: str, note: str = ""):
+async def reject_request(request_id: str, body: ApprovalNoteBody = None):
     """Reject a pending approval request."""
     approval_manager = get_approval_manager()
+    note = (body.note if body else "") or None
 
-    success = await approval_manager.reject(request_id, note or None)
+    success = await approval_manager.reject(request_id, note)
 
     if not success:
         raise HTTPException(404, "Approval request not found")

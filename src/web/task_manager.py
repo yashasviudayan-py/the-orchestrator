@@ -15,6 +15,7 @@ from collections import defaultdict
 from ..state.schemas import TaskState, TaskStatus
 from ..orchestrator import EnhancedOrchestratorGraph, create_hitl_enabled_graph
 from ..agents import ResearchAgentInterface, ContextCoreInterface, PRAgentInterface
+from ..api.approval_manager import get_approval_manager
 from .models import TaskRequest, TaskInfo, ProgressEvent, ProgressEventType
 
 logger = logging.getLogger(__name__)
@@ -87,8 +88,94 @@ class TaskManager:
         )
         logger.info("Orchestrator graph compiled and ready")
 
+        # Wire approval callbacks to emit SSE events for the dashboard
+        self._setup_approval_callbacks()
+
         # Load task history from disk
         self._load_tasks()
+
+    def _setup_approval_callbacks(self) -> None:
+        """Wire ApprovalManager callbacks to emit SSE events."""
+        approval_manager = get_approval_manager()
+
+        async def on_approval_requested(request):
+            """Emit APPROVAL_REQUIRED event to the task's SSE stream."""
+            # The graph creates its own TaskState with a different task_id than
+            # the one TaskManager uses for SSE queues.  Resolve to whichever
+            # active queue exists — try the request's task_id first, then fall
+            # back to the currently running task.
+            target_task_id = self._resolve_sse_task_id(request.task_id)
+            if not target_task_id:
+                logger.warning(
+                    f"Cannot emit APPROVAL_REQUIRED — no matching SSE queue "
+                    f"(request task_id={request.task_id}, queues={list(self.event_queues.keys())})"
+                )
+                return
+
+            logger.info(f"Emitting APPROVAL_REQUIRED SSE event for task {target_task_id}")
+            await self._emit_event(
+                target_task_id,
+                ProgressEventType.APPROVAL_REQUIRED,
+                {
+                    "task_id": target_task_id,
+                    "request_id": request.request_id,
+                    "operation_type": request.operation_type.value,
+                    "risk_level": request.risk_level.value,
+                    "description": request.description,
+                    "details": request.details or {},
+                    "agent_name": request.agent_name,
+                    "timeout_seconds": request.timeout_seconds,
+                },
+            )
+
+        async def on_approval_decided(request):
+            """Emit APPROVAL_DECIDED event to the task's SSE stream."""
+            target_task_id = self._resolve_sse_task_id(request.task_id)
+            if not target_task_id:
+                return
+
+            logger.info(
+                f"Emitting APPROVAL_DECIDED SSE event for task {target_task_id}: "
+                f"{request.status.value}"
+            )
+            await self._emit_event(
+                target_task_id,
+                ProgressEventType.APPROVAL_DECIDED,
+                {
+                    "task_id": target_task_id,
+                    "request_id": request.request_id,
+                    "approved": request.status.value == "approved",
+                    "status": request.status.value,
+                    "note": request.decision_note,
+                },
+            )
+
+        approval_manager.set_callbacks(
+            on_request_created=on_approval_requested,
+            on_request_decided=on_approval_decided,
+        )
+        logger.info("Approval callbacks wired for SSE event emission")
+
+    def _resolve_sse_task_id(self, internal_task_id: Optional[str]) -> Optional[str]:
+        """
+        Resolve the correct SSE queue task_id.
+
+        The orchestrator graph creates its own TaskState with a fresh UUID,
+        which differs from the task_id used by TaskManager for SSE queues.
+        This method maps back to the correct queue:
+        1. Try the provided task_id directly
+        2. Fall back to the single currently-running background task
+        """
+        # Direct match
+        if internal_task_id and internal_task_id in self.event_queues:
+            return internal_task_id
+
+        # Fall back: find the active background task (there's usually only one)
+        for tid in self.background_tasks:
+            if tid in self.event_queues:
+                return tid
+
+        return None
 
     async def start_task(self, request: TaskRequest) -> TaskState:
         """
