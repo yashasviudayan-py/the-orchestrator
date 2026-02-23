@@ -75,6 +75,10 @@ class TaskManager:
         # Background task handles {task_id: asyncio.Task}
         self.background_tasks: Dict[str, asyncio.Task] = {}
 
+        # Mapping from internal graph task_ids to TaskManager task_ids
+        # Populated by progress_callback so approval routing is accurate
+        self._graph_to_manager_task: Dict[str, str] = {}
+
         # Build the orchestrator once and reuse across tasks (LangGraph
         # compilation is expensive; the graph is stateless between runs).
         self._orchestrator = create_hitl_enabled_graph(
@@ -129,18 +133,25 @@ class TaskManager:
             )
 
         async def on_approval_decided(request):
-            """Emit APPROVAL_DECIDED event to the task's SSE stream."""
+            """Emit APPROVAL_DECIDED or APPROVAL_TIMEOUT event to the task's SSE stream."""
             target_task_id = self._resolve_sse_task_id(request.task_id)
             if not target_task_id:
                 return
 
+            # Choose event type based on status
+            is_timeout = request.status.value == "timeout"
+            event_type = (
+                ProgressEventType.APPROVAL_TIMEOUT if is_timeout
+                else ProgressEventType.APPROVAL_DECIDED
+            )
+
             logger.info(
-                f"Emitting APPROVAL_DECIDED SSE event for task {target_task_id}: "
+                f"Emitting {event_type.value} SSE event for task {target_task_id}: "
                 f"{request.status.value}"
             )
             await self._emit_event(
                 target_task_id,
-                ProgressEventType.APPROVAL_DECIDED,
+                event_type,
                 {
                     "task_id": target_task_id,
                     "request_id": request.request_id,
@@ -164,16 +175,23 @@ class TaskManager:
         which differs from the task_id used by TaskManager for SSE queues.
         This method maps back to the correct queue:
         1. Try the provided task_id directly
-        2. Fall back to the single currently-running background task
+        2. Check the graph-to-manager mapping
+        3. Fall back to the single currently-running background task (only if exactly one)
         """
         # Direct match
         if internal_task_id and internal_task_id in self.event_queues:
             return internal_task_id
 
-        # Fall back: find the active background task (there's usually only one)
-        for tid in self.background_tasks:
-            if tid in self.event_queues:
-                return tid
+        # Check the explicit mapping populated by progress_callback
+        if internal_task_id and internal_task_id in self._graph_to_manager_task:
+            mapped = self._graph_to_manager_task[internal_task_id]
+            if mapped in self.event_queues:
+                return mapped
+
+        # Fall back only if exactly one active background task (avoid misrouting)
+        active = [tid for tid in self.background_tasks if tid in self.event_queues]
+        if len(active) == 1:
+            return active[0]
 
         return None
 
@@ -270,14 +288,24 @@ class TaskManager:
             # Update status
             self._update_task_info(task_id, status=TaskStatus.RUNNING)
 
+            # Track previous state for detecting transitions
+            _prev_agent = [None]   # mutable container for closure
+            _prev_iteration = [0]
+
             # Progress callback to emit events during execution
             async def progress_callback(state_dict: dict):
                 """Called on each node update during orchestration."""
                 try:
                     # Extract state info
                     current_agent = state_dict.get("current_agent")
+                    next_agent = state_dict.get("next_agent")
                     iteration = state_dict.get("iteration", 0)
                     status = state_dict.get("status")
+
+                    # Register graph task_id → manager task_id mapping
+                    graph_task_id = state_dict.get("task_id")
+                    if graph_task_id and graph_task_id != task_id:
+                        self._graph_to_manager_task[graph_task_id] = task_id
 
                     # Update task info
                     self._update_task_info(
@@ -286,7 +314,62 @@ class TaskManager:
                         iteration=iteration,
                     )
 
-                    # Emit progress event
+                    # Detect agent transitions and emit richer events
+                    prev = _prev_agent[0]
+
+                    # Agent started (transition from different/no agent)
+                    if current_agent and current_agent != prev:
+                        # Previous agent completed
+                        if prev:
+                            await self._emit_event(
+                                task_id,
+                                ProgressEventType.AGENT_COMPLETE,
+                                {
+                                    "task_id": task_id,
+                                    "agent": prev,
+                                    "iteration": iteration,
+                                },
+                            )
+                        # New agent starting
+                        await self._emit_event(
+                            task_id,
+                            ProgressEventType.AGENT_START,
+                            {
+                                "task_id": task_id,
+                                "agent": current_agent,
+                                "iteration": iteration,
+                            },
+                        )
+
+                    # Routing decision made
+                    if next_agent and next_agent != current_agent:
+                        await self._emit_event(
+                            task_id,
+                            ProgressEventType.ROUTING_DECISION,
+                            {
+                                "task_id": task_id,
+                                "from_agent": current_agent,
+                                "next_agent": next_agent,
+                                "iteration": iteration,
+                            },
+                        )
+
+                    # Iteration advanced
+                    if iteration > _prev_iteration[0]:
+                        await self._emit_event(
+                            task_id,
+                            ProgressEventType.ITERATION,
+                            {
+                                "task_id": task_id,
+                                "iteration": iteration,
+                                "current_agent": current_agent,
+                            },
+                        )
+                        _prev_iteration[0] = iteration
+
+                    _prev_agent[0] = current_agent
+
+                    # Always emit generic progress event
                     await self._emit_event(
                         task_id,
                         ProgressEventType.AGENT_PROGRESS,

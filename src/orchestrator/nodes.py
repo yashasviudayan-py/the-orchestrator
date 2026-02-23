@@ -202,21 +202,28 @@ Respond with ONLY one word: research, context, pr, or NONE
             # Call agent
             result = await self.research_agent.execute(research_input)
 
-            # Store results
-            task_state.research_results = ResearchResult(**result)
-
-            # Filter secrets (CRITICAL SECURITY)
+            # Filter secrets (CRITICAL SECURITY) — both summary and content
             summary = result.get("summary", "")
-            filtered, had_secrets = self.context_agent.filter_secrets(summary)
+            content = result.get("content", "")
+            filtered_summary, summary_had_secrets = self.context_agent.filter_secrets(summary)
+            filtered_content, content_had_secrets = self.context_agent.filter_secrets(content)
 
+            had_secrets = summary_had_secrets or content_had_secrets
             if had_secrets:
                 task_state.secrets_detected = True
                 task_state.add_error("Secrets detected in research results - filtered")
 
+            # Apply filtered values before constructing ResearchResult
+            result["summary"] = filtered_summary
+            result["content"] = filtered_content
+
+            # Store results
+            task_state.research_results = ResearchResult(**result)
+
             task_state.add_message(
                 AgentType.RESEARCH,
                 MessageType.RESPONSE,
-                {"summary": filtered[:500], "urls_count": len(result.get("urls", []))},
+                {"summary": filtered_summary[:500], "urls_count": len(result.get("urls", []))},
             )
 
             logger.info("Research completed successfully")
@@ -578,7 +585,7 @@ Answer:"""
                     tags=["task_result", task_state.task_id],
                     source_type="task_result",
                 )
-                _vault.add(_doc)
+                _vault.add([_doc])
                 logger.info(f"Task result saved to Context Core vault: {task_state.task_id}")
             except Exception as _ve:
                 logger.warning(f"Could not save task result to vault: {_ve}")

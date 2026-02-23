@@ -44,6 +44,16 @@ def cli(ctx: click.Context, verbose: bool) -> None:
 @click.pass_context
 def serve(ctx: click.Context, host: str, port: int, reload: bool) -> None:
     """Start the Command Center web server."""
+    banner = r"""[bold white]
+       /\
+      /  \        ___  ____   ____ _   _ _____ ____ _____ ____      _  _____ ___  ____
+     / /\ \      / _ \|  _ \ / ___| | | | ____/ ___|_   _|  _ \   / \|_   _/ _ \|  _ \
+    / /__\ \    | | | | |_) | |   | |_| |  _| \___ \ | | | |_) | / _ \ | || | | | |_) |
+   /  ____  \   | |_| |  _ <| |___|  _  | |___ ___) || | |  _ < / ___ \| || |_| |  _ <
+  / /      \ \   \___/|_| \_\\____|_| |_|_____|____/ |_| |_| \_/_/   \_|_| \___/|_| \_\
+ /_/        \_\
+[/bold white]"""
+    console.print(banner)
     console.print(f"[bold green]Starting Command Center on http://{host}:{port}[/bold green]")
     if reload:
         # String form required for reload mode (uvicorn watches files)

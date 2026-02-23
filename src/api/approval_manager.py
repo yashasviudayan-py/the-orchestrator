@@ -178,6 +178,15 @@ class ApprovalManager:
                 f"(waited {request.timeout_seconds}s)"
             )
 
+            # Notify external listeners so the dashboard updates
+            if self._on_request_decided:
+                try:
+                    result = self._on_request_decided(request)
+                    if asyncio.iscoroutine(result):
+                        await result
+                except Exception as cb_err:
+                    logger.warning(f"on_request_decided callback error (timeout): {cb_err}")
+
             raise ApprovalTimeout(
                 f"Approval request timed out after {request.timeout_seconds}s"
             )

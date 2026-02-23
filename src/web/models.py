@@ -118,6 +118,7 @@ class ProgressEventType(str, Enum):
     AGENT_COMPLETE = "agent_complete"
     APPROVAL_REQUIRED = "approval_required"
     APPROVAL_DECIDED = "approval_decided"
+    APPROVAL_TIMEOUT = "approval_timeout"
     ITERATION = "iteration"
     ROUTING_DECISION = "routing_decision"
     COMPLETE = "complete"

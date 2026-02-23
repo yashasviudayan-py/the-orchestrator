@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <defs>
+    <linearGradient id="h" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2d2d4a"/>
+      <stop offset="100%" stop-color="#1a1a2e"/>
+    </linearGradient>
+  </defs>
+  <!-- Crest -->
+  <path d="M14 3C15 2,19 1.5,22 3C24 4,26 6,27 7.5C26 7,22 6,18 7C16 7.5,15 8.5,14 9C13.5 7,13.5 4,14 3Z" fill="#c62828"/>
+  <!-- Helmet -->
+  <path d="M9 13C9 8,12 5.5,16 5.5C20 5.5,23 8,23 13C23.5 16,22.5 19,21 21L17 22L12 22C11 22,10 21,9 20C8.5 18,8.5 15,9 13Z" fill="url(#h)" stroke="#4a4a6a" stroke-width="0.8"/>
+  <!-- Nose guard -->
+  <path d="M9 14C8 15,7 17,7 19C7 21,7.5 23,9 25C10 24,10.5 22,10.5 20L10 16Z" fill="url(#h)" stroke="#4a4a6a" stroke-width="0.8"/>
+  <!-- Eye slit -->
+  <path d="M11 16L20 15.5L19.5 17L11.5 17.5Z" fill="#0a0a14"/>
+  <!-- Chin -->
+  <path d="M12 24C14 26,18 26,21 25" fill="none" stroke="#4a4a6a" stroke-width="0.8" stroke-linecap="round"/>
+</svg>
