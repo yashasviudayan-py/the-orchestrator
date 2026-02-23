@@ -139,7 +139,8 @@ class TaskManager:
                 return
 
             # Choose event type based on status
-            is_timeout = request.status.value == "timeout"
+            status_value = getattr(request.status, 'value', None) if request.status else None
+            is_timeout = status_value == "timeout"
             event_type = (
                 ProgressEventType.APPROVAL_TIMEOUT if is_timeout
                 else ProgressEventType.APPROVAL_DECIDED
@@ -147,7 +148,7 @@ class TaskManager:
 
             logger.info(
                 f"Emitting {event_type.value} SSE event for task {target_task_id}: "
-                f"{request.status.value}"
+                f"{status_value}"
             )
             await self._emit_event(
                 target_task_id,

@@ -8,6 +8,7 @@ into a single web interface.
 import asyncio
 import json
 import logging
+import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -16,9 +17,10 @@ from typing import Optional
 import httpx
 from pydantic import BaseModel
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 from jinja2 import Environment, FileSystemLoader
 
 from ..config import get_cached_settings
@@ -90,9 +92,31 @@ class ChatRequest(BaseModel):
     repo_path: Optional[str] = None
 
 
-# In-memory store for pending chat sessions (chat_id -> message)
-# Small enough to not need TTL — entries are consumed on first stream connect
-_pending_chats: dict[str, str] = {}
+# In-memory store for pending chat sessions (chat_id -> (message, created_ts))
+# Entries expire after 5 minutes to prevent unbounded growth
+_pending_chats: dict[str, tuple[str, float]] = {}
+_CHAT_TTL_SECONDS = 300  # 5 minutes
+
+
+def _store_pending_chat(chat_id: str, message: str) -> None:
+    """Store a chat message with timestamp and garbage-collect expired entries."""
+    now = time.monotonic()
+    # Purge expired entries (cheap amortised scan)
+    expired = [k for k, (_, ts) in _pending_chats.items() if now - ts > _CHAT_TTL_SECONDS]
+    for k in expired:
+        del _pending_chats[k]
+    _pending_chats[chat_id] = (message, now)
+
+
+def _pop_pending_chat(chat_id: str) -> str | None:
+    """Retrieve and remove a chat message, returning None if missing or expired."""
+    entry = _pending_chats.pop(chat_id, None)
+    if entry is None:
+        return None
+    message, ts = entry
+    if time.monotonic() - ts > _CHAT_TTL_SECONDS:
+        return None  # expired
+    return message
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -161,6 +185,19 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Security headers middleware
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response: Response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Serve static files
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
@@ -625,7 +662,7 @@ async def chat_route(request: ChatRequest):
 
     if _is_conversational_msg(message):
         chat_id = str(uuid.uuid4())
-        _pending_chats[chat_id] = message
+        _store_pending_chat(chat_id, message)
         logger.info(f"Chat (conversational): {message[:60]}")
         return {"type": "chat", "stream_url": f"/api/chat/{chat_id}/stream"}
 
@@ -660,9 +697,9 @@ async def chat_stream(chat_id: str):
     Stream a direct Ollama response for a conversational message.
     Emits SSE events:  chat_token  (each token),  chat_complete  (done),  error.
     """
-    message = _pending_chats.pop(chat_id, None)
+    message = _pop_pending_chat(chat_id)
     if message is None:
-        raise HTTPException(404, "Chat session not found or already consumed")
+        raise HTTPException(404, "Chat session not found, expired, or already consumed")
 
     settings = get_cached_settings()
 

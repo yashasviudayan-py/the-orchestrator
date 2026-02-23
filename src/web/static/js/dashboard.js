@@ -212,15 +212,20 @@ function renderSessions(tasks) {
         return;
     }
 
-    el.sessionsList.innerHTML = tasks.map(t => `
-        <div class="session-item ${t.task_id === state.activeSessionId ? 'active' : ''}"
-             data-id="${t.task_id}" onclick="loadSession('${t.task_id}')">
+    el.sessionsList.innerHTML = '';
+    tasks.forEach(t => {
+        const div = document.createElement('div');
+        div.className = `session-item ${t.task_id === state.activeSessionId ? 'active' : ''}`;
+        div.dataset.id = t.task_id;
+        div.innerHTML = `
             <div class="session-title">${escapeHtml(t.objective)}</div>
             <div class="session-meta">
-                <span class="session-badge ${t.status}">${t.status}</span>
+                <span class="session-badge ${escapeHtml(t.status)}">${escapeHtml(t.status)}</span>
                 <span>${t.iteration ?? 0}/${t.max_iterations ?? 10} iter</span>
-            </div>
-        </div>`).join('');
+            </div>`;
+        div.addEventListener('click', () => loadSession(t.task_id));
+        el.sessionsList.appendChild(div);
+    });
 }
 
 async function loadSessions() {
@@ -306,35 +311,45 @@ function connectStream(taskId, streamUrl) {
     });
 
     es.addEventListener('agent_start', e => {
-        const d = JSON.parse(e.data);
-        setTyping(true);
-        setHeaderAgent(d.agent);
-        setHeaderIter(d.iteration);
-        addChatMessage('Starting…', d.agent || 'system');
+        try {
+            const d = JSON.parse(e.data);
+            setTyping(true);
+            setHeaderAgent(d.agent);
+            setHeaderIter(d.iteration);
+            addChatMessage('Starting…', d.agent || 'system');
+        } catch (err) { console.error('SSE parse error (agent_start):', err); }
     });
 
     es.addEventListener('agent_progress', e => {
-        const d = JSON.parse(e.data);
-        if (d.current_agent) setHeaderAgent(d.current_agent);
-        if (typeof d.iteration === 'number') setHeaderIter(d.iteration);
-        if (d.message) addChatMessage(escapeHtml(d.message), d.current_agent || 'system');
+        try {
+            const d = JSON.parse(e.data);
+            if (d.current_agent) setHeaderAgent(d.current_agent);
+            if (typeof d.iteration === 'number') setHeaderIter(d.iteration);
+            if (d.message) addChatMessage(escapeHtml(d.message), d.current_agent || 'system');
+        } catch (err) { console.error('SSE parse error (agent_progress):', err); }
     });
 
     es.addEventListener('agent_complete', e => {
-        const d = JSON.parse(e.data);
-        setTyping(false);
-        addChatMessage(`Done (${d.duration_ms}ms)`, d.agent || 'system');
+        try {
+            const d = JSON.parse(e.data);
+            setTyping(false);
+            addChatMessage(`Done (${d.duration_ms}ms)`, d.agent || 'system');
+        } catch (err) { console.error('SSE parse error (agent_complete):', err); }
     });
 
     es.addEventListener('routing_decision', e => {
-        const d = JSON.parse(e.data);
-        addChatMessage(`Routing → ${d.next_agent}`, 'supervisor');
+        try {
+            const d = JSON.parse(e.data);
+            addChatMessage(`Routing → ${escapeHtml(d.next_agent)}`, 'supervisor');
+        } catch (err) { console.error('SSE parse error (routing_decision):', err); }
     });
 
     es.addEventListener('iteration', e => {
-        const d = JSON.parse(e.data);
-        setHeaderIter(d.iteration, d.max);
-        addChatMessage(`Iteration ${d.iteration}/${d.max}`, 'supervisor');
+        try {
+            const d = JSON.parse(e.data);
+            setHeaderIter(d.iteration, d.max);
+            addChatMessage(`Iteration ${d.iteration}/${d.max}`, 'supervisor');
+        } catch (err) { console.error('SSE parse error (iteration):', err); }
     });
 
     es.addEventListener('approval_required', () => {
@@ -380,22 +395,28 @@ function connectStream(taskId, streamUrl) {
     });
 
     es.addEventListener('approval_decided', e => {
-        const d = JSON.parse(e.data);
-        addChatMessage(`Approval ${d.approved ? 'approved ✓' : 'rejected ✗'}`, 'system', d.approved ? '' : 'error');
+        try {
+            const d = JSON.parse(e.data);
+            addChatMessage(`Approval ${d.approved ? 'approved ✓' : 'rejected ✗'}`, 'system', d.approved ? '' : 'error');
+        } catch (err) { console.error('SSE parse error (approval_decided):', err); }
     });
 
     es.addEventListener('complete', e => {
-        const d = JSON.parse(e.data);
-        setTyping(false);
-        setHeaderStatus('completed');
+        try {
+            const d = JSON.parse(e.data);
+            setTyping(false);
+            setHeaderStatus('completed');
 
-        // Render final output as white markdown block, not green
-        if (d.final_output) {
-            addOutputBlock(d.final_output);
-        } else {
+            // Render final output as white markdown block, not green
+            if (d.final_output) {
+                addOutputBlock(d.final_output);
+            } else {
+                addChatMessage('✓ Task completed', 'system');
+            }
+        } catch (err) {
+            console.error('SSE parse error (complete):', err);
             addChatMessage('✓ Task completed', 'system');
         }
-
         resetInput();
         es.close();
         state.eventSource = null;
@@ -456,10 +477,12 @@ function connectChatStream(streamUrl) {
     state.eventSource = es;
 
     es.addEventListener('chat_token', e => {
-        const d = JSON.parse(e.data);
-        buffer += d.token;
-        div.innerHTML = renderMarkdown(buffer);
-        div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        try {
+            const d = JSON.parse(e.data);
+            buffer += d.token;
+            div.innerHTML = renderMarkdown(buffer);
+            div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        } catch (err) { console.error('SSE parse error (chat_token):', err); }
     });
 
     es.addEventListener('chat_complete', () => {
@@ -677,6 +700,8 @@ function stopSuggestedRotation() {
 // Init
 // ═══════════════════════════════════════════════════════════════════════
 
+let _sessionsInterval = null;
+
 async function init() {
     if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission();
@@ -687,8 +712,15 @@ async function init() {
     startSuggestedRotation();
 
     // Auto-refresh sessions every 15s (picks up status changes)
-    setInterval(loadSessions, 15000);
+    _sessionsInterval = setInterval(loadSessions, 15000);
 }
+
+// Cleanup resources on page unload to prevent leaks
+window.addEventListener('beforeunload', () => {
+    if (state.eventSource) { state.eventSource.close(); state.eventSource = null; }
+    if (_sessionsInterval) { clearInterval(_sessionsInterval); }
+    stopSuggestedRotation();
+});
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);

@@ -130,17 +130,17 @@ function renderPendingApprovals(approvals) {
                 </div>
 
                 <div class="approval-description">
-                    ${approval.description}
+                    ${escapeHtml(approval.description)}
                 </div>
 
                 ${renderApprovalDetails(approval)}
 
                 <div class="approval-meta" style="display: flex; gap: 16px; margin-top: 12px; font-size: 13px; color: var(--text-dim);">
                     <div>
-                        <span>Task:</span> <span style="color: var(--text-secondary);">${approval.task_id || 'N/A'}</span>
+                        <span>Task:</span> <span style="color: var(--text-secondary);">${escapeHtml(approval.task_id || 'N/A')}</span>
                     </div>
                     <div>
-                        <span>Agent:</span> <span style="color: var(--text-secondary);">${approval.agent_name || 'N/A'}</span>
+                        <span>Agent:</span> <span style="color: var(--text-secondary);">${escapeHtml(approval.agent_name || 'N/A')}</span>
                     </div>
                     <div>
                         <span>Requested:</span> <span style="color: var(--text-secondary);">${createdTime}</span>
@@ -215,7 +215,7 @@ function renderApprovalDetails(approval) {
     // Render other details (skip diff key)
     const otherDetails = Object.entries(approval.details)
         .filter(([key]) => key !== 'diff')
-        .map(([key, value]) => `<div>• ${key}: ${formatDetailValue(value)}</div>`)
+        .map(([key, value]) => `<div>• ${escapeHtml(key)}: ${formatDetailValue(value)}</div>`)
         .join('');
 
     if (otherDetails) {
@@ -261,11 +261,11 @@ function renderHistory(history) {
                             ${hasDetails ? '<span style="color: var(--text-dim); font-size: 11px; margin-left: 4px;">▶ click to expand</span>' : ''}
                         </div>
                         <div style="color: var(--text-secondary); font-size: 13px; margin-bottom: 4px;">
-                            ${item.description}
+                            ${escapeHtml(item.description)}
                         </div>
                         ${item.decision_note ? `
                             <div style="color: var(--text-dim); font-size: 12px; font-style: italic;">
-                                Note: ${item.decision_note}
+                                Note: ${escapeHtml(item.decision_note)}
                             </div>
                         ` : ''}
                     </div>
@@ -328,7 +328,7 @@ function renderHistoryDetails(details) {
 
     const otherDetails = Object.entries(details)
         .filter(([key]) => key !== 'diff')
-        .map(([key, value]) => `<div>• ${key}: ${formatDetailValue(value)}</div>`)
+        .map(([key, value]) => `<div>• ${escapeHtml(key)}: ${formatDetailValue(value)}</div>`)
         .join('');
 
     if (otherDetails) {
@@ -482,13 +482,21 @@ function formatOperationType(operationType) {
 }
 
 /**
+ * Escape HTML to prevent XSS
+ */
+function escapeHtml(text) {
+    const map = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'};
+    return String(text).replace(/[&<>"']/g, m => map[m]);
+}
+
+/**
  * Format detail value
  */
 function formatDetailValue(value) {
     if (typeof value === 'object') {
-        return JSON.stringify(value);
+        return escapeHtml(JSON.stringify(value));
     }
-    return String(value);
+    return escapeHtml(String(value));
 }
 
 /**
@@ -526,27 +534,29 @@ function getTimeRemaining(createdAt, timeoutSeconds) {
  * Update all timers
  */
 function updateTimers() {
-    const timerElements = document.querySelectorAll('.time-remaining');
+    // Build a lookup map for O(1) access by request_id
+    const approvalMap = {};
+    state.pendingApprovals.forEach(a => { approvalMap[a.request_id] = a; });
 
-    timerElements.forEach((el, index) => {
-        if (state.pendingApprovals[index]) {
-            const approval = state.pendingApprovals[index];
-            const timeRemaining = getTimeRemaining(approval.created_at, approval.timeout_seconds);
-            el.textContent = timeRemaining;
+    document.querySelectorAll('.approval-card').forEach(card => {
+        const requestId = card.dataset.requestId;
+        const approval = approvalMap[requestId];
+        const timerEl = card.querySelector('.time-remaining');
+        if (!approval || !timerEl) return;
 
-            // Color code based on urgency
-            const elapsed = (Date.now() - new Date(approval.created_at).getTime()) / 1000;
-            const remaining = approval.timeout_seconds - elapsed;
+        const timeRemaining = getTimeRemaining(approval.created_at, approval.timeout_seconds);
+        timerEl.textContent = timeRemaining;
 
-            if (remaining <= 0) {
-                el.style.color = 'var(--error)';
-            } else if (remaining < 60) {
-                el.style.color = 'var(--error)';
-            } else if (remaining < 180) {
-                el.style.color = 'var(--warning)';
-            } else {
-                el.style.color = 'var(--text-secondary)';
-            }
+        // Color code based on urgency
+        const elapsed = (Date.now() - new Date(approval.created_at).getTime()) / 1000;
+        const remaining = approval.timeout_seconds - elapsed;
+
+        if (remaining <= 60) {
+            timerEl.style.color = 'var(--error)';
+        } else if (remaining < 180) {
+            timerEl.style.color = 'var(--warning)';
+        } else {
+            timerEl.style.color = 'var(--text-secondary)';
         }
     });
 }
