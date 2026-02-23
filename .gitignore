@@ -64,3 +64,4 @@ config/secrets.yaml
 config/api_keys.yaml
 *.db
 *.sqlite3
+chroma_data/
