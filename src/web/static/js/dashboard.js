@@ -132,6 +132,7 @@ function renderMarkdown(text) {
 
 function hideEmpty() {
     if (el.chatEmpty) { el.chatEmpty.style.display = 'none'; }
+    stopSuggestedRotation();
 }
 
 function addUserBubble(text) {
@@ -578,6 +579,7 @@ el.newChatBtn.addEventListener('click', () => {
     hideStatusBar();
     if (el.sessionTitle) el.sessionTitle.textContent = 'The Orchestrator';
     el.taskInput.focus();
+    startSuggestedRotation();
 
     document.querySelectorAll('.session-item').forEach(s => s.classList.remove('active'));
 });
@@ -607,6 +609,71 @@ el.taskInput.addEventListener('keydown', e => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════
+// Suggested Topics (rotating chips)
+// ═══════════════════════════════════════════════════════════════════════
+
+const SUGGESTED_TOPICS = [
+    // Each group of 6 shown in a 3x2 grid, then rotated
+    ['Research best practices', 'Refactor auth module', 'Write unit tests', 'Fix open bugs', 'Review PR changes', 'Profile performance'],
+    ['Analyze code quality', 'Create a new endpoint', 'Optimize queries', 'Set up CI/CD pipeline', 'Add input validation', 'Generate changelog'],
+    ['Audit security issues', 'Migrate to async/await', 'Add error handling', 'Improve test coverage', 'Document the codebase', 'Check dependencies'],
+    ['Build a REST API', 'Refactor state mgmt', 'Add logging system', 'Create database schema', 'Setup monitoring', 'Code review assistant'],
+];
+
+let _suggestedInterval = null;
+let _suggestedIndex = 0;
+
+function renderSuggestedChips(group) {
+    const row = document.getElementById('suggested-row');
+    if (!row) return;
+
+    // Exit current chips
+    const current = row.querySelectorAll('.suggested-chip');
+    if (current.length > 0) {
+        current.forEach(c => c.classList.add('chip-exit'));
+        setTimeout(() => {
+            row.innerHTML = '';
+            _insertChips(row, group);
+        }, 350);
+    } else {
+        _insertChips(row, group);
+    }
+}
+
+function _insertChips(row, group) {
+    group.forEach(text => {
+        const chip = document.createElement('button');
+        chip.className = 'suggested-chip';
+        chip.textContent = text;
+        chip.addEventListener('click', () => {
+            el.taskInput.value = text;
+            el.taskInput.focus();
+            el.taskInput.dispatchEvent(new Event('input'));
+        });
+        row.appendChild(chip);
+    });
+}
+
+function startSuggestedRotation() {
+    // Show first group immediately
+    _suggestedIndex = 0;
+    renderSuggestedChips(SUGGESTED_TOPICS[0]);
+
+    // Cycle every 4 seconds
+    _suggestedInterval = setInterval(() => {
+        _suggestedIndex = (_suggestedIndex + 1) % SUGGESTED_TOPICS.length;
+        renderSuggestedChips(SUGGESTED_TOPICS[_suggestedIndex]);
+    }, 4000);
+}
+
+function stopSuggestedRotation() {
+    if (_suggestedInterval) {
+        clearInterval(_suggestedInterval);
+        _suggestedInterval = null;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // Init
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -615,6 +682,9 @@ async function init() {
         Notification.requestPermission();
     }
     await loadSessions();
+
+    // Start suggested topics rotation
+    startSuggestedRotation();
 
     // Auto-refresh sessions every 15s (picks up status changes)
     setInterval(loadSessions, 15000);

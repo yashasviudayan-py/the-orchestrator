@@ -1404,6 +1404,121 @@ body {
     opacity: 0.85;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   Suggested Topics (Dashboard Empty State)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.suggested-topics {
+    display: flex;
+    justify-content: center;
+}
+
+.suggested-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    width: 680px;
+}
+
+.suggested-chip {
+    position: relative;
+    padding: 10px 16px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.04);
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.3s ease, transform 0.2s ease, box-shadow 0.3s ease;
+    animation: chip-appear 0.5s ease both;
+    z-index: 0;
+    overflow: visible;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    font-family: inherit;
+    white-space: nowrap;
+    text-align: center;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.04), 0 0 2px rgba(255, 255, 255, 0.06);
+}
+
+/* Snowy white glowing border */
+.suggested-chip::before {
+    content: '';
+    position: absolute;
+    inset: -1.5px;
+    border-radius: 999px;
+    padding: 1.5px;
+    background: linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.45),
+        rgba(200, 220, 255, 0.3),
+        rgba(255, 255, 255, 0.15),
+        rgba(220, 230, 255, 0.35),
+        rgba(255, 255, 255, 0.45)
+    );
+    background-size: 300% 300%;
+    animation: snow-glow 4s ease-in-out infinite;
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    z-index: -1;
+    opacity: 0.5;
+    transition: opacity 0.3s ease;
+}
+
+.suggested-chip:hover::before {
+    opacity: 1;
+}
+
+.suggested-chip:hover {
+    color: var(--text-primary);
+    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow:
+        0 0 12px rgba(255, 255, 255, 0.12),
+        0 0 28px rgba(255, 255, 255, 0.06),
+        0 0 4px rgba(255, 255, 255, 0.15);
+}
+
+.suggested-chip:active {
+    transform: scale(0.97);
+}
+
+@keyframes snow-glow {
+    0%, 100% { background-position: 0% 50%; }
+    50%      { background-position: 100% 50%; }
+}
+
+@keyframes chip-appear {
+    from { opacity: 0; transform: translateY(8px) scale(0.95); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Staggered entry for each chip */
+.suggested-chip:nth-child(1) { animation-delay: 0s; }
+.suggested-chip:nth-child(2) { animation-delay: 0.05s; }
+.suggested-chip:nth-child(3) { animation-delay: 0.1s; }
+.suggested-chip:nth-child(4) { animation-delay: 0.15s; }
+.suggested-chip:nth-child(5) { animation-delay: 0.2s; }
+.suggested-chip:nth-child(6) { animation-delay: 0.25s; }
+
+/* Exit animation class */
+.suggested-chip.chip-exit {
+    animation: chip-exit 0.35s ease forwards;
+}
+
+@keyframes chip-exit {
+    to { opacity: 0; transform: translateY(-6px) scale(0.95); }
+}
+
+@media (max-width: 720px) {
+    .suggested-row {
+        grid-template-columns: repeat(2, 1fr);
+        width: 100%;
+        max-width: 440px;
+    }
+}
+
 @media (max-width: 768px) {
     .chat-sidebar { width: 0; min-width: 0; border-right: none; }
     .chat-main .chat-messages { padding: 16px; }

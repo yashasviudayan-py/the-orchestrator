@@ -63,10 +63,12 @@
 
             <!-- Messages -->
             <div class="chat-messages" id="chat-messages">
-                <div class="chat-empty text-dim" id="chat-empty" style="margin: auto; text-align:center; padding: 48px 24px;">
-                    <div style="margin-bottom: 12px;"><img src="/static/img/logo.svg" alt="" style="width: 64px; height: 64px;"></div>
-                    <div style="font-size: 18px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">The Orchestrator</div>
-                    <div style="font-size: 14px; max-width: 360px;">Ask anything about your project, or give a task to the AI agents. Results are saved automatically.</div>
+                <div class="chat-empty text-dim" id="chat-empty" style="margin: auto; text-align:center; padding: 24px 24px 48px;">
+                    <div style="margin-bottom: 6px;"><img src="/static/img/logo.svg" alt="" style="width: 56px; height: 56px;"></div>
+                    <div style="font-size: 18px; font-weight: 600; color: var(--text-primary); margin-bottom: 24px;">The Orchestrator</div>
+                    <div class="suggested-topics" id="suggested-topics">
+                        <div class="suggested-row" id="suggested-row"></div>
+                    </div>
                 </div>
             </div>
 
